@@ -4,6 +4,9 @@
   "author": "MaTeMaTuK <maksym.vikarii@gmail.com>",
   "description": "Project containing your PowerApps Component Framework (PCF) control.",
   "license": "GPLv3",
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "build": "pcf-scripts build",
     "clean": "pcf-scripts clean",
