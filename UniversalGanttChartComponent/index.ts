@@ -29,7 +29,7 @@ export class UniversalGanttChartComponent
   private _crmUserTimeOffset: number;
   private _dataSet: DataSet;
   private _locale: string;
-  private _taskTypeMap: any;
+  private _taskTypeMap: Record<string, TaskType> | undefined;
   private _projects: {
     [index: string]: boolean;
   };
@@ -206,7 +206,7 @@ export class UniversalGanttChartComponent
         context.parameters.taskTypeMapping.raw
       );
       const entRef = record.getNamedReference();
-      const entName = entRef.etn || <string>(<any>entRef).logicalName;
+      const entName = entRef.etn || ((entRef as { logicalName?: string }).logicalName as string);
 
       let entityColorTheme = entityTypesAndColors.find(
         (e) => e.entityLogicalName === entName
@@ -334,7 +334,7 @@ export class UniversalGanttChartComponent
     let taskType: TaskType = this._defaultTaskType;
     if (taskTypeOption && taskTypeMapping) {
       if (!this._taskTypeMap) {
-        this._taskTypeMap = JSON.parse(taskTypeMapping);
+        this._taskTypeMap = JSON.parse(taskTypeMapping) as Record<string, TaskType>;
       }
       taskType = <TaskType>this._taskTypeMap[taskTypeOption];
     }

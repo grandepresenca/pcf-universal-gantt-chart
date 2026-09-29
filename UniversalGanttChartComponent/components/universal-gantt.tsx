@@ -52,7 +52,7 @@ export const UniversalGantt: React.FunctionComponent<UniversalGanttProps> = (
     const recordRef =
       context.parameters.entityDataSet.records[task.id].getNamedReference();
     const entityName =
-      recordRef.etn || ((recordRef as any).logicalName as string);
+      recordRef.etn || ((recordRef as { logicalName?: string }).logicalName as string);
     let resultState = true;
     try {
       await context.webAPI.updateRecord(entityName, task.id, {
@@ -79,7 +79,7 @@ export const UniversalGantt: React.FunctionComponent<UniversalGanttProps> = (
     const recordRef =
       context.parameters.entityDataSet.records[task.id].getNamedReference();
     const entityName =
-      recordRef.etn || ((recordRef as any).logicalName as string);
+      recordRef.etn || ((recordRef as { logicalName?: string }).logicalName as string);
     let resultState = true;
     try {
       await context.webAPI.updateRecord(entityName, task.id, {
