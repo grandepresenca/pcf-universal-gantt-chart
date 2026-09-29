@@ -16,17 +16,16 @@ export const createTaskListLocal = (
   setSelectedTask: (taskId: string) => void;
   onExpanderClick: (task: Task) => void;
 }> => {
-  return ({
+  return function TaskListTable({
     rowHeight,
     rowWidth,
     tasks,
     fontFamily,
     fontSize,
-    locale,
     selectedTaskId,
     setSelectedTask,
     onExpanderClick,
-  }) => {
+  }) {
     return (
       <div
         className="Gantt-Task-List_Wrapper"

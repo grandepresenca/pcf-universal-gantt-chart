@@ -1,5 +1,4 @@
 import * as React from "react";
-import * as ReactDOM from "react-dom";
 import {
   Gantt,
   Task,
@@ -46,7 +45,6 @@ export type UniversalGanttProps = {
 export const UniversalGantt: React.FunctionComponent<UniversalGanttProps> = (
   props
 ) => {
-  debugger;
   const [view, setView] = React.useState(props.viewMode);
   const { context } = props;
   // Events
@@ -122,7 +120,7 @@ export const UniversalGantt: React.FunctionComponent<UniversalGanttProps> = (
     return context.formatting.formatDateShort(value, includeTime);
   };
 
-  let options: StylingOption & EventOption = {
+  const options: StylingOption & EventOption = {
     fontSize: props.fontSize,
     fontFamily: "SegoeUI, Segoe UI",
     headerHeight: props.headerHeight,

@@ -90,7 +90,7 @@ export class UniversalGanttChartComponent
       if (!this._locale) {
         this._locale = await this.getLocalCode(context);
       }
-      const listCellWidth = !!context.parameters.listCellWidth.raw
+      const listCellWidth = context.parameters.listCellWidth.raw
         ? `${context.parameters.listCellWidth.raw}px`
         : "";
       //header display names
@@ -100,16 +100,16 @@ export class UniversalGanttChartComponent
         context.parameters.customHeaderStartName.raw || startField.displayName;
       const endDisplayName =
         context.parameters.customHeaderEndName.raw || endField.displayName;
-      const progressFieldName = !!progressField ? progressField.name : "";
+      const progressFieldName = progressField ? progressField.name : "";
       const progressDisplayName =
         context.parameters.customHeaderProgressName.raw ||
-        (!!progressField ? progressField.displayName : "");
+        (progressField ? progressField.displayName : "");
 
       //height setup
-      const rowHeight = !!context.parameters.rowHeight.raw
+      const rowHeight = context.parameters.rowHeight.raw
         ? context.parameters.rowHeight.raw
         : 50;
-      const headerHeight = !!context.parameters.headerHeight.raw
+      const headerHeight = context.parameters.headerHeight.raw
         ? context.parameters.headerHeight.raw
         : 50;
 
@@ -131,7 +131,6 @@ export class UniversalGanttChartComponent
         context.parameters.displayDateFormat.raw === "datetime";
 
       const fontSize = context.parameters.fontSize.raw || "14px";
-      debugger;
       //create gantt
       const gantt = React.createElement(UniversalGantt, {
         context,
@@ -175,7 +174,7 @@ export class UniversalGanttChartComponent
     dataset: ComponentFramework.PropertyTypes.DataSet,
     isProgressing: boolean
   ) {
-    let entityTypesAndColors: {
+    const entityTypesAndColors: {
       entityLogicalName: string;
       backgroundColor: string;
       backgroundSelectedColor: string;
@@ -183,7 +182,7 @@ export class UniversalGanttChartComponent
       progressSelectedColor: string;
     }[] = [];
     const isDisabled = context.parameters.displayMode.raw === "readonly";
-    let tasks: Task[] = [];
+    const tasks: Task[] = [];
     for (const recordId of dataset.sortedRecordIds) {
       const record = dataset.records[recordId];
       const name = <string>record.getValue(this._displayNameStr);
@@ -201,7 +200,7 @@ export class UniversalGanttChartComponent
       const optionColum = dataset.columns.find(
         (c) => c.alias == this._displayColorOption
       );
-      const optionLogicalName = !!optionColum ? optionColum.name : "";
+      const optionLogicalName = optionColum ? optionColum.name : "";
       const taskType = this.getTaskType(
         taskTypeOption,
         context.parameters.taskTypeMapping.raw
