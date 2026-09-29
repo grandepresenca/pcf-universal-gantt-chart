@@ -12,3 +12,9 @@
 # msbuild output directories
 /bin
 /obj
+
+# macOS
+.DS_Store
+
+# local PAC CLI settings accidentally created under a literal ~ directory
+/~/
