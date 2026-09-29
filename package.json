@@ -12,7 +12,8 @@
     "clean": "pcf-scripts clean",
     "rebuild": "pcf-scripts rebuild",
     "start": "pcf-scripts start",
-    "refreshTypes": "pcf-scripts refreshTypes"
+    "refreshTypes": "pcf-scripts refreshTypes",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@ant-design/colors": "^6.0.0",
