@@ -1,60 +1,61 @@
 import * as React from "react";
 import { Task } from "gantt-task-react";
+import { useGanttDisplayContext } from "./gantt-display-context";
 
-export const createTooltip = (
-  startDisplayName: string,
-  endDisplayName: string,
-  progressDisplayName: string,
-  durationDisplayName: string,
-  metricDisplayName: string,
-  includeTime: boolean,
-  formatDateShort: (value: Date, includeTime?: boolean) => string
-): React.FunctionComponent<{
+/** Props gantt-task-react passes to a custom TooltipContent. */
+export interface TooltipContentProps {
   task: Task;
   fontSize: string;
   fontFamily: string;
-}> => {
-  return function TooltipContent({ task, fontSize, fontFamily }) {
-    const style = {
-      fontSize,
-      fontFamily,
-    };
-    return (
-      <div className={"Gantt-Tooltip_Container"} style={style}>
-        <p
-          className={
-            "Gantt-Tooltip_Paragraph Gantt-Tooltip_Paragraph__Information"
-          }
-          style={{ fontSize: fontSize }}
-        >
-          {task.name}
-        </p>
+}
 
-        <p
-          className={"Gantt-Tooltip_Paragraph"}
-          style={{ fontSize: fontSize }}
-        >{`${startDisplayName}: ${formatDateShort(
-          task.start,
-          includeTime
-        )}`}</p>
+function TooltipParagraph({
+  fontSize,
+  children,
+}: {
+  fontSize: string;
+  children: React.ReactNode;
+}): React.ReactElement {
+  return (
+    <p className={"Gantt-Tooltip_Paragraph"} style={{ fontSize: fontSize }}>
+      {children}
+    </p>
+  );
+}
 
-        <p
-          className={"Gantt-Tooltip_Paragraph"}
-          style={{ fontSize: fontSize }}
-        >{`${endDisplayName}: ${formatDateShort(task.end, includeTime)}`}</p>
-
-        <p
-          className={"Gantt-Tooltip_Paragraph"}
-          style={{ fontSize: fontSize }}
-        >{`${durationDisplayName}: ${~~(
-          (task.end.getTime() - task.start.getTime()) /
-          (1000 * 60 * 60 * 24)
-        )} ${metricDisplayName}`}</p>
-
-        <p className={"Gantt-Tooltip_Paragraph"} style={{ fontSize: fontSize }}>
-          {!!task.progress && `${progressDisplayName}: ${task.progress} %`}
-        </p>
-      </div>
-    );
+export function TooltipContent({
+  task,
+  fontSize,
+  fontFamily,
+}: TooltipContentProps): React.ReactElement {
+  const display = useGanttDisplayContext();
+  const { formatDateShort, includeTime } = display;
+  const style = {
+    fontSize,
+    fontFamily,
   };
-};
+  return (
+    <div className={"Gantt-Tooltip_Container"} style={style}>
+      <p
+        className={
+          "Gantt-Tooltip_Paragraph Gantt-Tooltip_Paragraph__Information"
+        }
+        style={{ fontSize: fontSize }}
+      >
+        {task.name}
+      </p>
+      <TooltipParagraph fontSize={fontSize}>{`${display.startDisplayName}: ${formatDateShort(
+        task.start,
+        includeTime
+      )}`}</TooltipParagraph>
+      <TooltipParagraph fontSize={fontSize}>{`${display.endDisplayName}: ${formatDateShort(task.end, includeTime)}`}</TooltipParagraph>
+      <TooltipParagraph fontSize={fontSize}>{`${display.durationDisplayName}: ${~~(
+        (task.end.getTime() - task.start.getTime()) /
+        (1000 * 60 * 60 * 24)
+      )} ${display.metricDisplayName}`}</TooltipParagraph>
+      <TooltipParagraph fontSize={fontSize}>
+        {!!task.progress && `${display.progressDisplayName}: ${task.progress} %`}
+      </TooltipParagraph>
+    </div>
+  );
+}
