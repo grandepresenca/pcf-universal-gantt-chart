@@ -2,13 +2,9 @@
 // Install (dev deps):
 //   npm i -D jest ts-jest @types/jest
 // package.json scripts:
-//   "test": "jest --passWithNoTests"
+//   "test": "jest --coverage"   (the gate: fails if there are no tests, and
+//                                enforces coverageThreshold on every run)
 //   "test:watch": "jest --watch"
-//
-// TEMPORARY: `--passWithNoTests` exists only so `npm test` is green on
-// master before any test file exists. It MUST be removed (back to plain
-// "jest") in the same change that lands the first real test on master,
-// so an accidentally deleted test can never pass silently.
 module.exports = {
   preset: "ts-jest",
   testEnvironment: "node", // pure logic; no DOM needed. Use "jsdom" only if a test touches React.
@@ -19,4 +15,10 @@ module.exports = {
     "!UniversalGanttChartComponent/**/*.test.{ts,tsx}",
     "!UniversalGanttChartComponent/generated/**",
   ],
+  // Per-module thresholds for the pure logic we add. Raise as coverage grows.
+  coverageThreshold: {
+    "./UniversalGanttChartComponent/columns.ts": {
+      branches: 90, functions: 100, lines: 95, statements: 95,
+    },
+  },
 };
