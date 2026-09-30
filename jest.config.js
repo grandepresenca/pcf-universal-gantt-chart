@@ -20,5 +20,8 @@ module.exports = {
     "./UniversalGanttChartComponent/columns.ts": {
       branches: 90, functions: 100, lines: 95, statements: 95,
     },
+    "./UniversalGanttChartComponent/hierarchy.ts": {
+      branches: 90, functions: 100, lines: 90, statements: 90,
+    },
   },
 };
