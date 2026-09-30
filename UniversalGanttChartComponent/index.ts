@@ -29,7 +29,7 @@ export class UniversalGanttChartComponent
   private _crmUserTimeOffset: number;
   private _dataSet: DataSet;
   private _locale: string;
-  private _taskTypeMap: any;
+  private _taskTypeMap: Record<string, TaskType> | undefined;
   private _projects: {
     [index: string]: boolean;
   };
@@ -90,7 +90,7 @@ export class UniversalGanttChartComponent
       if (!this._locale) {
         this._locale = await this.getLocalCode(context);
       }
-      const listCellWidth = !!context.parameters.listCellWidth.raw
+      const listCellWidth = context.parameters.listCellWidth.raw
         ? `${context.parameters.listCellWidth.raw}px`
         : "";
       //header display names
@@ -100,16 +100,16 @@ export class UniversalGanttChartComponent
         context.parameters.customHeaderStartName.raw || startField.displayName;
       const endDisplayName =
         context.parameters.customHeaderEndName.raw || endField.displayName;
-      const progressFieldName = !!progressField ? progressField.name : "";
+      const progressFieldName = progressField ? progressField.name : "";
       const progressDisplayName =
         context.parameters.customHeaderProgressName.raw ||
-        (!!progressField ? progressField.displayName : "");
+        (progressField ? progressField.displayName : "");
 
       //height setup
-      const rowHeight = !!context.parameters.rowHeight.raw
+      const rowHeight = context.parameters.rowHeight.raw
         ? context.parameters.rowHeight.raw
         : 50;
-      const headerHeight = !!context.parameters.headerHeight.raw
+      const headerHeight = context.parameters.headerHeight.raw
         ? context.parameters.headerHeight.raw
         : 50;
 
@@ -131,7 +131,6 @@ export class UniversalGanttChartComponent
         context.parameters.displayDateFormat.raw === "datetime";
 
       const fontSize = context.parameters.fontSize.raw || "14px";
-      debugger;
       //create gantt
       const gantt = React.createElement(UniversalGantt, {
         context,
@@ -175,7 +174,7 @@ export class UniversalGanttChartComponent
     dataset: ComponentFramework.PropertyTypes.DataSet,
     isProgressing: boolean
   ) {
-    let entityTypesAndColors: {
+    const entityTypesAndColors: {
       entityLogicalName: string;
       backgroundColor: string;
       backgroundSelectedColor: string;
@@ -183,7 +182,7 @@ export class UniversalGanttChartComponent
       progressSelectedColor: string;
     }[] = [];
     const isDisabled = context.parameters.displayMode.raw === "readonly";
-    let tasks: Task[] = [];
+    const tasks: Task[] = [];
     for (const recordId of dataset.sortedRecordIds) {
       const record = dataset.records[recordId];
       const name = <string>record.getValue(this._displayNameStr);
@@ -201,13 +200,13 @@ export class UniversalGanttChartComponent
       const optionColum = dataset.columns.find(
         (c) => c.alias == this._displayColorOption
       );
-      const optionLogicalName = !!optionColum ? optionColum.name : "";
+      const optionLogicalName = optionColum ? optionColum.name : "";
       const taskType = this.getTaskType(
         taskTypeOption,
         context.parameters.taskTypeMapping.raw
       );
       const entRef = record.getNamedReference();
-      const entName = entRef.etn || <string>(<any>entRef).logicalName;
+      const entName = entRef.etn || ((entRef as { logicalName?: string }).logicalName as string);
 
       let entityColorTheme = entityTypesAndColors.find(
         (e) => e.entityLogicalName === entName
@@ -335,7 +334,7 @@ export class UniversalGanttChartComponent
     let taskType: TaskType = this._defaultTaskType;
     if (taskTypeOption && taskTypeMapping) {
       if (!this._taskTypeMap) {
-        this._taskTypeMap = JSON.parse(taskTypeMapping);
+        this._taskTypeMap = JSON.parse(taskTypeMapping) as Record<string, TaskType>;
       }
       taskType = <TaskType>this._taskTypeMap[taskTypeOption];
     }

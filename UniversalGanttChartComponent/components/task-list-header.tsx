@@ -10,7 +10,12 @@ export const createHeaderLocal = (
   fontFamily: string;
   fontSize: string;
 }> => {
-  return ({ headerHeight, fontFamily, fontSize, rowWidth }) => {
+  return function TaskListHeader({
+    headerHeight,
+    fontFamily,
+    fontSize,
+    rowWidth,
+  }) {
     return (
       <div
         className="Gantt-Table"

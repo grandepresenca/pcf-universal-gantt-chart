@@ -14,7 +14,7 @@ export const createTooltip = (
   fontSize: string;
   fontFamily: string;
 }> => {
-  return ({ task, fontSize, fontFamily }) => {
+  return function TooltipContent({ task, fontSize, fontFamily }) {
     const style = {
       fontSize,
       fontFamily,

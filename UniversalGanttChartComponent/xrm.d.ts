@@ -1,6 +1,6 @@
 export namespace Xrm {
-  namespace EntityMetadata {
-    interface AttributesCollection {
+  export namespace EntityMetadata {
+    export interface AttributesCollection {
       getByName(name: string): OptionSetMetadata;
     }
 
