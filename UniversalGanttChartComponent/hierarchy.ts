@@ -163,3 +163,178 @@ export function depthOf<T extends HierNode>(
   }
   return depth;
 }
+
+// ---------------------------------------------------------------------------
+// Helpers around the tree: reading and normalizing parent ids, sibling order,
+// expander rows, collapse filtering and cycle reporting. All pure.
+// ---------------------------------------------------------------------------
+
+/**
+ * Canonical form of a record id for matching parent links: trimmed, one pair
+ * of surrounding braces removed, lower-cased. Applied to BOTH sides (record
+ * ids and parent ids) when building nodes, so "{ABC-1}" and "abc-1" match.
+ * Only for matching: the Gantt keeps the record's original id.
+ */
+export function normalizeId(id: string): string {
+  const trimmed = id.trim();
+  const unbraced =
+    trimmed.startsWith("{") && trimmed.endsWith("}") ? trimmed.slice(1, -1) : trimmed;
+  return unbraced.trim().toLowerCase();
+}
+
+function isObject(value: unknown): value is Readonly<Record<string, unknown>> {
+  return typeof value === "object" && value !== null;
+}
+
+/** The raw id inside a lookup's `id`: `{ guid: string }`, or a plain string. */
+function rawLookupId(id: unknown): string | undefined {
+  if (typeof id === "string") {
+    return id;
+  }
+  if (isObject(id) && typeof id.guid === "string") {
+    return id.guid;
+  }
+  return undefined;
+}
+
+/**
+ * The normalized parent id from a dataset lookup value, or undefined when the
+ * value is not a lookup with a usable id. Replaces the unchecked
+ * EntityReference cast: anything unexpected (null, a raw string such as the
+ * harness's mock "val", a number, a missing or blank guid) means "no parent",
+ * never a crash. Deliberately strict: a plain string value is NOT accepted
+ * as an id.
+ */
+export function readParentId(value: unknown): string | undefined {
+  if (!isObject(value)) {
+    return undefined;
+  }
+  const raw = rawLookupId(value.id);
+  if (raw === undefined) {
+    return undefined;
+  }
+  const id = normalizeId(raw);
+  return id === "" ? undefined : id;
+}
+
+/** getTime(), with an invalid date sorting after every valid one. */
+function sortableTime(date: Date): number {
+  const time = date.getTime();
+  return Number.isNaN(time) ? Number.POSITIVE_INFINITY : time;
+}
+
+/**
+ * Stable sort by start date, earliest first; equal (or both invalid) starts
+ * keep their input order, i.e. the view's order breaks ties. Run BEFORE
+ * orderByHierarchy: because that keeps siblings in input order, siblings at
+ * every level (roots included) come out by start date. In-memory only — the
+ * view still defines which records arrive. Does not mutate `items`.
+ */
+export function sortByStart<T>(items: readonly T[], startOf: (item: T) => Date): T[] {
+  return items
+    .map((item, index) => ({ item, index, time: sortableTime(startOf(item)) }))
+    .sort((a, b) => (a.time === b.time ? a.index - b.index : a.time < b.time ? -1 : 1))
+    .map((entry) => entry.item);
+}
+
+/** An ordered node plus whether it has children (drives the expander). */
+export interface HierarchyRow<T extends HierNode> extends OrderedNode<T> {
+  hasChildren: boolean;
+}
+
+/**
+ * Adds hasChildren to orderByHierarchy's output. In depth-first order a node
+ * has children exactly when the next row is one level deeper.
+ */
+export function buildRows<T extends HierNode>(
+  ordered: readonly OrderedNode<T>[]
+): HierarchyRow<T>[] {
+  return ordered.map((row, i) => {
+    const next = ordered[i + 1];
+    return {
+      node: row.node,
+      depth: row.depth,
+      hasChildren: next !== undefined && next.depth === row.depth + 1,
+    };
+  });
+}
+
+/**
+ * The rows still shown when the nodes in `collapsed` (by node id) are
+ * collapsed: a collapsed node stays visible, its whole subtree (children,
+ * grandchildren, ...) is hidden. One pass over depth-first rows. Ids in
+ * `collapsed` that match no row, or a row without children, change nothing.
+ * Returns `rows` itself when nothing is collapsed.
+ */
+export function visibleRows<T extends HierNode>(
+  rows: readonly HierarchyRow<T>[],
+  collapsed: ReadonlySet<string>
+): readonly HierarchyRow<T>[] {
+  if (collapsed.size === 0) {
+    return rows;
+  }
+  const out: HierarchyRow<T>[] = [];
+  let hiddenBelowDepth: number | null = null;
+  rows.forEach((row) => {
+    if (hiddenBelowDepth !== null && row.depth > hiddenBelowDepth) {
+      return;
+    }
+    hiddenBelowDepth = null;
+    out.push(row);
+    if (row.hasChildren && collapsed.has(row.node.id)) {
+      hiddenBelowDepth = row.depth;
+    }
+  });
+  return out;
+}
+
+/** The parent index of node i (first index for its parent id), or -1. */
+function parentIndex<T extends HierNode>(
+  nodes: readonly T[],
+  byId: ReadonlyMap<string, number>,
+  i: number
+): number {
+  const parentId = nodes[i].parentId;
+  return parentId === null ? -1 : byId.get(parentId) ?? -1;
+}
+
+const UNSEEN = 0;
+const ON_WALK = 1;
+const DONE = 2;
+
+/** Walk parents from `start`; mark nodes that close a loop on this walk. */
+function markCyclesFrom<T extends HierNode>(
+  nodes: readonly T[],
+  byId: ReadonlyMap<string, number>,
+  state: number[],
+  onCycle: boolean[],
+  start: number
+): void {
+  const walk: number[] = [];
+  let i = start;
+  while (i !== -1 && state[i] === UNSEEN) {
+    state[i] = ON_WALK;
+    walk.push(i);
+    i = parentIndex(nodes, byId, i);
+  }
+  if (i !== -1 && state[i] === ON_WALK) {
+    // i is on this walk again: everything from i onwards is the loop.
+    walk.slice(walk.indexOf(i)).forEach((k) => (onCycle[k] = true));
+  }
+  walk.forEach((k) => (state[k] = DONE));
+}
+
+/**
+ * Ids of nodes that lie ON a parent cycle (a -> a, a -> b -> a, ...), in
+ * input order, each once. Nodes that merely hang below a cycle are not
+ * included. For a one-time warning; orderByHierarchy already renders cycles
+ * safely. Iterative, O(n).
+ */
+export function findCycleIds<T extends HierNode>(nodes: readonly T[]): string[] {
+  const byId = indexById(nodes);
+  const state = nodes.map(() => UNSEEN);
+  const onCycle = nodes.map(() => false);
+  nodes.forEach((_node, i) => markCyclesFrom(nodes, byId, state, onCycle, i));
+  const ids = nodes.filter((_node, i) => onCycle[i]).map((node) => node.id);
+  return Array.from(new Set(ids));
+}
