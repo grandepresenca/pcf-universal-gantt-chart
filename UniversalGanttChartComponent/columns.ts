@@ -355,3 +355,67 @@ export function readCellTexts(
   }
   return columns.map((column) => record.getFormattedValue(column.name) ?? "");
 }
+
+/** Number-like kinds are right-aligned in the list; everything else is left-aligned. */
+export function isRightAlignedKind(kind: ExtraColumnKind): boolean {
+  return kind === "number" || kind === "currency" || kind === "date";
+}
+
+/**
+ * Cache key for a resolveExtraColumns call: changes exactly when its inputs
+ * (config, the dataset columns' name/dataType/displayName in order, default
+ * width) change, so updateView can skip re-validation on resize or refresh.
+ * Null, undefined and "" config give the same key (all mean "no config").
+ */
+export function extraColumnsCacheKey(
+  raw: string | null | undefined,
+  available: readonly AvailableColumn[],
+  defaultWidthPx: number
+): string {
+  const columns = available.map((c) => [c.name, c.dataType, c.displayName]);
+  return JSON.stringify([raw ?? "", defaultWidthPx, columns]);
+}
+
+/**
+ * React key for <Gantt>. gantt-task-react measures the list width only when
+ * listCellWidth changes, so a different set of extra columns (names or
+ * widths) needs a remount. "" when there are none, so the key never changes
+ * for a control without extra columns.
+ */
+export function extraColumnsGanttKey(columns: readonly ExtraColumnDef[]): string {
+  if (columns.length === 0) {
+    return "";
+  }
+  return JSON.stringify(columns.map((c) => [c.name, c.widthPx]));
+}
+
+export interface CellTextMap {
+  /** Record id -> formatted texts, in column order. */
+  readonly cells: ReadonlyMap<string, readonly string[]>;
+  /** Records whose getFormattedValue threw; their cells are empty. */
+  readonly failedIds: readonly string[];
+}
+
+/**
+ * Formatted cell texts for every record id. A record whose getFormattedValue
+ * throws gets empty cells and is listed in failedIds, so one bad record
+ * degrades its own row instead of failing the whole chart.
+ */
+export function buildCellTextMap(
+  recordIds: readonly string[],
+  getRecord: (id: string) => FormattedValueSource | undefined,
+  columns: readonly ExtraColumnDef[]
+): CellTextMap {
+  const cells = new Map<string, readonly string[]>();
+  const failedIds: string[] = [];
+  recordIds.forEach((id) => {
+    try {
+      cells.set(id, readCellTexts(getRecord(id), columns));
+    } catch {
+      // Not swallowed: the caller reports failedIds.
+      cells.set(id, columns.map(() => ""));
+      failedIds.push(id);
+    }
+  });
+  return { cells, failedIds };
+}

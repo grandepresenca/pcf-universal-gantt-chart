@@ -1,6 +1,8 @@
 import * as React from "react";
 import { Task } from "gantt-task-react";
 import { useGanttDisplayContext } from "./gantt-display-context";
+import { useExtraColumnsContext } from "./extra-columns-context";
+import { ExtraColumnDef, isRightAlignedKind } from "../columns";
 
 /** Props gantt-task-react passes to a custom TaskListTable. */
 export interface TaskListTableProps {
@@ -103,6 +105,44 @@ function DateCell({
   );
 }
 
+function ExtraCell({
+  column,
+  text,
+}: {
+  column: ExtraColumnDef;
+  text: string;
+}): React.ReactElement {
+  const width = `${column.widthPx}px`;
+  const rightAligned = isRightAlignedKind(column.kind);
+  // The non-breaking space pads the aligned edge without changing the width.
+  return (
+    <div
+      className={
+        rightAligned
+          ? "Gantt-Task-List_Cell Gantt-Task-List_Cell__Right"
+          : "Gantt-Task-List_Cell"
+      }
+      style={{ minWidth: width, maxWidth: width }}
+      title={text}
+    >
+      {rightAligned ? <>{text}&nbsp;</> : <>&nbsp;{text}</>}
+    </div>
+  );
+}
+
+/** Cells for the configured extra columns, after End. */
+function ExtraCells({ taskId }: { taskId: string }): React.ReactElement {
+  const { columns, cellTexts } = useExtraColumnsContext();
+  const texts = cellTexts.get(taskId);
+  return (
+    <>
+      {columns.map((column, i) => (
+        <ExtraCell key={column.name} column={column} text={texts?.[i] ?? ""} />
+      ))}
+    </>
+  );
+}
+
 function TaskListRow({
   task,
   rowHeight,
@@ -137,6 +177,7 @@ function TaskListRow({
       <NameCell task={task} rowWidth={rowWidth} onExpanderClick={onExpanderClick} />
       <DateCell rowWidth={rowWidth} text={formatDateShort(task.start, includeTime)} />
       <DateCell rowWidth={rowWidth} text={formatDateShort(task.end, includeTime)} />
+      <ExtraCells taskId={task.id} />
     </div>
   );
 }

@@ -16,7 +16,13 @@ import {
   GanttDisplayContext,
   GanttDisplayContextValue,
 } from "./gantt-display-context";
+import {
+  ExtraColumnsContext,
+  ExtraColumnsContextValue,
+} from "./extra-columns-context";
+import { ExtraColumnsNotice } from "./extra-columns-notice";
 import { isErrorDialogOptions } from "../helper";
+import { ExtraColumnDef } from "../columns";
 
 export type UniversalGanttProps = {
   context: ComponentFramework.Context<IInputs>;
@@ -44,8 +50,27 @@ export type UniversalGanttProps = {
   columnWidthMonth: number;
   onViewChange: (viewMode: ViewMode) => void;
   onExpanderStateChange: (itemId: string, expanderState: boolean) => void;
+  /** Validated extra list columns (fork customization #2). */
+  extraColumns: readonly ExtraColumnDef[];
+  /** Record id -> extra column texts, in extraColumns order. */
+  extraCellTexts: ReadonlyMap<string, readonly string[]>;
+  /** Maker-facing extra-columns configuration issues; empty when fine. */
+  extraColumnMessages: readonly string[];
+  /** Remounts <Gantt> when the extra column set changes (list width). */
+  extraColumnsKey: string;
 } & EventOption &
   DisplayOption;
+
+/** Builds the ExtraColumnsContext value; recomputed only when an input changes. */
+function useExtraColumnsValue(
+  columns: readonly ExtraColumnDef[],
+  cellTexts: ReadonlyMap<string, readonly string[]>
+): ExtraColumnsContextValue {
+  return React.useMemo<ExtraColumnsContextValue>(
+    () => ({ columns, cellTexts }),
+    [columns, cellTexts]
+  );
+}
 
 /** Builds the GanttDisplayContext value; recomputed only when an input changes. */
 function useDisplayContextValue(
@@ -86,6 +111,15 @@ function useDisplayContextValue(
 export const UniversalGantt: React.FunctionComponent<UniversalGanttProps> = (
   props
 ) => {
+  // The extra-columns props are for this component only; keep them out of
+  // the spread into <Gantt>.
+  const {
+    extraColumns,
+    extraCellTexts,
+    extraColumnMessages,
+    extraColumnsKey,
+    ...ganttProps
+  } = props;
   const [view, setView] = React.useState(props.viewMode);
   const { context } = props;
   // Events
@@ -172,6 +206,7 @@ export const UniversalGantt: React.FunctionComponent<UniversalGanttProps> = (
     formatDateShort,
     handleOpenRecord
   );
+  const extraColumnsValue = useExtraColumnsValue(extraColumns, extraCellTexts);
 
   const options: StylingOption & EventOption = {
     fontSize: props.fontSize,
@@ -215,16 +250,20 @@ export const UniversalGantt: React.FunctionComponent<UniversalGanttProps> = (
           setView(viewMode);
         }}
       />
+      <ExtraColumnsNotice messages={extraColumnMessages} />
       <GanttDisplayContext.Provider value={displayContext}>
-        <Gantt
-          {...props}
-          {...options}
-          viewMode={view}
-          onDoubleClick={handleOpenRecord}
-          onDateChange={handleDateChange}
-          onSelect={handleSelect}
-          onExpanderClick={handleExpanderClick}
-        />
+        <ExtraColumnsContext.Provider value={extraColumnsValue}>
+          <Gantt
+            key={extraColumnsKey}
+            {...ganttProps}
+            {...options}
+            viewMode={view}
+            onDoubleClick={handleOpenRecord}
+            onDateChange={handleDateChange}
+            onSelect={handleSelect}
+            onExpanderClick={handleExpanderClick}
+          />
+        </ExtraColumnsContext.Provider>
       </GanttDisplayContext.Provider>
     </div>
   );

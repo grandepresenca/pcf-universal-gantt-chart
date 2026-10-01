@@ -1,5 +1,6 @@
 import * as React from "react";
 import { useGanttDisplayContext } from "./gantt-display-context";
+import { useExtraColumnsContext } from "./extra-columns-context";
 
 /** Props gantt-task-react passes to a custom TaskListHeader. */
 export interface TaskListHeaderProps {
@@ -46,6 +47,34 @@ function HeaderCell({
   );
 }
 
+/** Header cells for the configured extra columns, after End. */
+function ExtraHeaderCells({
+  headerHeight,
+}: {
+  headerHeight: number;
+}): React.ReactElement {
+  const { columns } = useExtraColumnsContext();
+  return (
+    <>
+      {columns.map((column) => {
+        const width = `${column.widthPx}px`;
+        return (
+          <React.Fragment key={column.name}>
+            <HeaderSeparator headerHeight={headerHeight} marginTopRatio={0.25} />
+            <div
+              className="Gantt-Table_Header-Item Gantt-Table_Header-Item__Extra"
+              style={{ minWidth: width, maxWidth: width }}
+              title={column.label}
+            >
+              &nbsp;{column.label}
+            </div>
+          </React.Fragment>
+        );
+      })}
+    </>
+  );
+}
+
 export function TaskListHeader({
   headerHeight,
   fontFamily,
@@ -75,6 +104,7 @@ export function TaskListHeader({
         <HeaderCell rowWidth={rowWidth} label={startDisplayName} />
         <HeaderSeparator headerHeight={headerHeight} marginTopRatio={0.25} />
         <HeaderCell rowWidth={rowWidth} label={endDisplayName} />
+        <ExtraHeaderCells headerHeight={headerHeight} />
       </div>
     </div>
   );

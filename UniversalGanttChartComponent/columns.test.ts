@@ -10,8 +10,12 @@ import {
   ExtraColumnDef,
   ExtraColumnsResult,
   FormattedValueSource,
+  buildCellTextMap,
   classifyDataType,
   describeIssue,
+  extraColumnsCacheKey,
+  extraColumnsGanttKey,
+  isRightAlignedKind,
   parseExtraColumnsConfig,
   readCellTexts,
   resolveExtraColumns,
@@ -314,5 +318,157 @@ describe("readCellTexts", () => {
     const r = record({});
     readCellTexts(r, defs.slice(0, 2));
     expect(r.calls).toEqual(["klein_wbs", "klein_cost"]);
+  });
+});
+
+describe("isRightAlignedKind", () => {
+  test.each([
+    ["number", true],
+    ["currency", true],
+    ["date", true],
+    ["text", false],
+    ["lookup", false],
+    ["optionset", false],
+    ["boolean", false],
+  ] as const)("%s -> %s", (kind, expected) => {
+    expect(isRightAlignedKind(kind)).toBe(expected);
+  });
+});
+
+describe("extraColumnsCacheKey", () => {
+  const key = (raw: string | null | undefined, available = AVAILABLE, width = 155): string =>
+    extraColumnsCacheKey(raw, available, width);
+  const CONFIG = json([{ name: "klein_wbs" }]);
+
+  test("same inputs give the same key (cache hit on resize/refresh)", () => {
+    expect(key(CONFIG, AVAILABLE.slice())).toBe(key(CONFIG));
+  });
+
+  test("null, undefined and empty config share one key", () => {
+    expect(key(null)).toBe(key(""));
+    expect(key(undefined)).toBe(key(""));
+  });
+
+  test("a config change changes the key", () => {
+    expect(key(json([{ name: "klein_cost" }]))).not.toBe(key(CONFIG));
+  });
+
+  test("a default width change changes the key", () => {
+    expect(key(CONFIG, AVAILABLE, 120)).not.toBe(key(CONFIG));
+  });
+
+  test.each([
+    ["name", { ...AVAILABLE[2], name: "klein_other" }],
+    ["dataType", { ...AVAILABLE[2], dataType: "Whole.None" }],
+    ["displayName", { ...AVAILABLE[2], displayName: "Work Breakdown" }],
+  ])("a column %s change changes the key", (_field, changed) => {
+    const available = AVAILABLE.map((c, i) => (i === 2 ? changed : c));
+    expect(key(CONFIG, available)).not.toBe(key(CONFIG));
+  });
+
+  test("column order is part of the key", () => {
+    expect(key(CONFIG, AVAILABLE.slice().reverse())).not.toBe(key(CONFIG));
+  });
+
+  test("an added column changes the key", () => {
+    expect(key(CONFIG, AVAILABLE.concat([col("klein_new")]))).not.toBe(key(CONFIG));
+  });
+
+  test("delimiter-like characters cannot make two inputs collide", () => {
+    const a = extraColumnsCacheKey("x", [col("a,b", "c")], 1);
+    const b = extraColumnsCacheKey("x", [col("a", "b,c")], 1);
+    expect(a).not.toBe(b);
+  });
+});
+
+describe("extraColumnsGanttKey", () => {
+  const def = (name: string, widthPx = 100, label = name): ExtraColumnDef => ({
+    name,
+    label,
+    widthPx,
+    kind: "text",
+  });
+
+  test("no columns gives the constant empty key", () => {
+    expect(extraColumnsGanttKey([])).toBe("");
+  });
+
+  test("the same column set gives the same key", () => {
+    expect(extraColumnsGanttKey([def("a"), def("b")])).toBe(extraColumnsGanttKey([def("a"), def("b")]));
+  });
+
+  test("a non-empty set never gives the empty key", () => {
+    expect(extraColumnsGanttKey([def("a")])).not.toBe("");
+  });
+
+  test("a width change changes the key", () => {
+    expect(extraColumnsGanttKey([def("a", 120)])).not.toBe(extraColumnsGanttKey([def("a", 100)]));
+  });
+
+  test("an added, removed or reordered column changes the key", () => {
+    const base = extraColumnsGanttKey([def("a"), def("b")]);
+    expect(extraColumnsGanttKey([def("a"), def("b"), def("c")])).not.toBe(base);
+    expect(extraColumnsGanttKey([def("a")])).not.toBe(base);
+    expect(extraColumnsGanttKey([def("b"), def("a")])).not.toBe(base);
+  });
+
+  test("a label change alone does not remount (it does not change the list width)", () => {
+    expect(extraColumnsGanttKey([def("a", 100, "Label A")])).toBe(extraColumnsGanttKey([def("a", 100, "Other")]));
+  });
+});
+
+// buildCellTextMap fixtures (module scope keeps the describe within max-lines-per-function).
+const CELL_DEFS: readonly ExtraColumnDef[] = [
+  { name: "klein_wbs", label: "WBS", widthPx: 80, kind: "text" },
+  { name: "klein_cost", label: "Cost", widthPx: 90, kind: "currency" },
+];
+const cellSource = (values: Record<string, string | null>): FormattedValueSource => ({
+  getFormattedValue: (name) => values[name],
+});
+const CELL_RECORDS: Record<string, FormattedValueSource> = {
+  r1: cellSource({ klein_wbs: "1.1", klein_cost: "$1.00" }),
+  r2: cellSource({ klein_wbs: null, klein_cost: "$2.00" }),
+  bad: {
+    getFormattedValue: () => {
+      throw new Error("host failure");
+    },
+  },
+};
+const lookupCellRecord = (id: string): FormattedValueSource | undefined => CELL_RECORDS[id];
+
+describe("buildCellTextMap", () => {
+  const defs = CELL_DEFS;
+  const lookup = lookupCellRecord;
+
+  test("maps every id to its texts, keeping record order", () => {
+    const { cells, failedIds } = buildCellTextMap(["r2", "r1"], lookup, defs);
+    expect(Array.from(cells.keys())).toEqual(["r2", "r1"]);
+    expect(cells.get("r1")).toEqual(["1.1", "$1.00"]);
+    expect(cells.get("r2")).toEqual(["", "$2.00"]);
+    expect(failedIds).toEqual([]);
+  });
+
+  test("a missing record gives empty cells and is not a failure", () => {
+    const { cells, failedIds } = buildCellTextMap(["missing"], lookup, defs);
+    expect(cells.get("missing")).toEqual(["", ""]);
+    expect(failedIds).toEqual([]);
+  });
+
+  test("a throwing record gets empty cells and is reported; the others still fill", () => {
+    const { cells, failedIds } = buildCellTextMap(["r1", "bad", "r2"], lookup, defs);
+    expect(cells.get("bad")).toEqual(["", ""]);
+    expect(cells.get("r1")).toEqual(["1.1", "$1.00"]);
+    expect(cells.get("r2")).toEqual(["", "$2.00"]);
+    expect(failedIds).toEqual(["bad"]);
+  });
+
+  test("no columns reads nothing, even from a throwing record", () => {
+    const { cells, failedIds } = buildCellTextMap(["bad"], lookup, []);
+    expect(cells.get("bad")).toEqual([]);
+    expect(failedIds).toEqual([]);
+  });
+
+  test("no ids gives an empty map", () => {
+    expect(buildCellTextMap([], lookup, defs).cells.size).toBe(0);
   });
 });
