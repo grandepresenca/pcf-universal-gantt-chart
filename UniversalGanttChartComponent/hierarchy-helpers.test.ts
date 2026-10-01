@@ -46,6 +46,19 @@ describe("normalizeId", () => {
     expect(normalizeId("   ")).toBe("");
     expect(normalizeId("{}")).toBe("");
   });
+
+  test("a lone brace is kept (one char cannot be a surrounding pair)", () => {
+    expect(normalizeId("{")).toBe("{");
+    expect(normalizeId("}")).toBe("}");
+  });
+
+  test("only one surrounding pair is removed", () => {
+    expect(normalizeId("{{ABC}}")).toBe("{abc}");
+  });
+
+  test("inner braces are kept once the outer pair is removed", () => {
+    expect(normalizeId("{a}b}")).toBe("a}b");
+  });
 });
 
 describe("readParentId — accepted lookup shapes", () => {
@@ -203,6 +216,11 @@ describe("findCycleIds", () => {
   test("no cycles in a tree, with orphans, or in empty input", () => {
     expect(findCycleIds([n("a"), n("b", "a"), n("c", "b"), n("o", "ghost")])).toEqual([]);
     expect(findCycleIds([])).toEqual([]);
+  });
+
+  test("an orphan is never a loop, wherever it sits in the input", () => {
+    expect(findCycleIds([n("o", "ghost")])).toEqual([]);
+    expect(findCycleIds([n("a", "o"), n("o", "ghost")])).toEqual([]);
   });
 
   test("a self-cycle", () => {
