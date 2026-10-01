@@ -126,3 +126,39 @@ describe("depthOf  cycle-safe single-node depth", () => {
     expect(Number.isFinite(d)).toBe(true);
   });
 });
+
+describe("orderByHierarchy — edges beyond the original contract cases", () => {
+  test("an orphan keeps its own subtree under it", () => {
+    const out = orderByHierarchy([n("kid", "x"), n("x", "ghost")]);
+    expect(ids(out)).toEqual(["x", "kid"]);
+    expect(depths(out)).toEqual({ x: 0, kid: 1 });
+  });
+
+  test("a subtree hanging off a cycle is emitted under its cycle entry, once", () => {
+    // a <-> b form a cycle; c hangs below b; r is a real root (emitted first).
+    const out = orderByHierarchy([n("a", "b"), n("b", "a"), n("c", "b"), n("r")]);
+    expect(ids(out)).toEqual(["r", "a", "b", "c"]);
+    expect(depths(out)).toEqual({ r: 0, a: 0, b: 1, c: 2 });
+  });
+
+  test("duplicate ids: every input node is still emitted exactly once", () => {
+    // Dataset ids are unique; this pins the "each node once" guarantee for any input.
+    const input = [n("x"), n("y", "x"), n("j", "x"), n("x", "y")];
+    const out = orderByHierarchy(input);
+    expect(out).toHaveLength(input.length);
+    expect(new Set(out.map((o) => o.node)).size).toBe(input.length);
+  });
+});
+
+describe("depthOf — missing ids and orphans", () => {
+  const byId = new Map<string, HierNode>([
+    ["o", n("o", "ghost")],
+    ["oc", n("oc", "o")],
+  ]);
+
+  test("an id not in the map has depth 0", () => expect(depthOf("nope", byId)).toBe(0));
+  test("an orphan is depth 0 and its child depth 1", () => {
+    expect(depthOf("o", byId)).toBe(0);
+    expect(depthOf("oc", byId)).toBe(1);
+  });
+});
