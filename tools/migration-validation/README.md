@@ -86,3 +86,14 @@ parent that *is* the level-0 row counts as "no parent" everywhere.
 Expected on the King Ranch data:
 - **The Active Projects view is flat by design.** This report is about tasks, not projects.
 - **The Project form subgrid** is where the nesting should match.
+
+## Troubleshooting
+
+- **Many "missing" tasks on one side? Suspect permissions first, not the migration.**
+  If the signed-in account can't see every task (Dataverse) or every project (PWA
+  reporting), that extract is silently partial. Check the header row counts against
+  what you expect, then re-extract with an account that can read everything.
+- **The PWA snippet keeps getting throttled.** After 5 retries it stops and writes no
+  file, so a partial extract can't be mistaken for a complete one. Wait and re-run. A
+  one-query-per-project mode isn't built yet; it will be added only if throttling
+  actually blocks the extract.
