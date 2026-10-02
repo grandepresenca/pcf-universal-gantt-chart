@@ -26,5 +26,8 @@ module.exports = {
     "./UniversalGanttChartComponent/task-mapping.ts": {
       branches: 100, functions: 100, lines: 100, statements: 100,
     },
+    "./UniversalGanttChartComponent/list-layout.ts": {
+      branches: 100, functions: 100, lines: 100, statements: 100,
+    },
   },
 };
