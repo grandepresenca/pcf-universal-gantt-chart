@@ -1,7 +1,7 @@
-// task-mapping.test.ts — parent attachment, the display pipeline, the cycle warning.
+// task-mapping.test.ts — the display pipeline and the cycle warning.
 
 import { Task } from "gantt-task-react";
-import { TaskNode, buildHierarchy, cycleWarning, linkParent } from "./task-mapping";
+import { TaskNode, buildHierarchy, cycleWarning } from "./task-mapping";
 
 const node = (id: string, parentId: string | null, iso: string, endIso: string = iso): TaskNode => {
   const task: Task = { id, name: id, start: new Date(iso), end: new Date(endIso), progress: 0, type: "task" };
@@ -9,21 +9,6 @@ const node = (id: string, parentId: string | null, iso: string, endIso: string =
 };
 const shape = (nodes: TaskNode[]): [string, number, boolean][] =>
   buildHierarchy(nodes).rows.map((r) => [r.node.id, r.depth, r.hasChildren]);
-
-describe("linkParent", () => {
-  test("a project parent groups the task under it (project only, no arrow)", () => {
-    expect(linkParent("project", "P-1")).toEqual({ project: "P-1" });
-  });
-
-  test.each(["task", "milestone"] as const)("a %s parent draws a dependency arrow (no grouping)", (type) => {
-    expect(linkParent(type, "T-1")).toEqual({ dependencies: ["T-1"] });
-  });
-
-  test("the parent record id is passed through unchanged", () => {
-    expect(linkParent("project", "{AbC}")).toEqual({ project: "{AbC}" });
-    expect(linkParent("task", "{AbC}")).toEqual({ dependencies: ["{AbC}"] });
-  });
-});
 
 describe("buildHierarchy — display order", () => {
   test("siblings at every level by start; parents before children; depth and hasChildren", () => {

@@ -2,7 +2,9 @@ import * as React from "react";
 import { Task } from "gantt-task-react";
 import { useGanttDisplayContext } from "./gantt-display-context";
 import { useExtraColumnsContext } from "./extra-columns-context";
+import { HierarchyRowInfo, useHierarchyContext } from "./hierarchy-context";
 import { ExtraColumnDef, isRightAlignedKind } from "../columns";
+import { expanderSymbol, indentPx } from "../list-layout";
 
 /** Props gantt-task-react passes to a custom TaskListTable. */
 export interface TaskListTableProps {
@@ -14,54 +16,59 @@ export interface TaskListTableProps {
   tasks: Task[];
   selectedTaskId: string;
   setSelectedTask: (taskId: string) => void;
+  /** Passed by the library; unused: the tree's expander state is ours (HierarchyContext). */
   onExpanderClick: (task: Task) => void;
 }
 
-function getExpanderSymbol(hideChildren: boolean | undefined): string {
-  if (hideChildren === false) {
-    return "▼";
-  }
-  if (hideChildren === true) {
-    return "▶";
-  }
-  return "";
-}
+/** A task missing from the tree (should not happen) renders as a childless root. */
+const NOT_IN_TREE: HierarchyRowInfo = { depth: 0, hasChildren: false };
 
+/** The ▼/▶ glyph for rows with loaded children; an empty spacer otherwise. */
 function ExpanderToggle({
-  task,
-  onExpanderClick,
+  hasChildren,
+  collapsed,
 }: {
-  task: Task;
-  onExpanderClick: (task: Task) => void;
+  hasChildren: boolean;
+  collapsed: boolean;
 }): React.ReactElement {
-  const expanderSymbol = getExpanderSymbol(task.hideChildren);
+  const glyph = expanderSymbol(hasChildren, collapsed);
   return (
     <div
       className={
-        expanderSymbol
+        glyph
           ? "Gantt-Task-List_Cell__Expander"
           : "Gantt-Task-List_Cell__Empty-Expander"
       }
-      onClick={(e) => {
-        onExpanderClick(task);
-        e.stopPropagation();
-      }}
     >
-      {expanderSymbol}
+      {glyph}
     </div>
+  );
+}
+
+/** Indentation for the row's depth: a fixed-width spacer, not cell padding. */
+function IndentSpacer({ width }: { width: number }): React.ReactElement | null {
+  if (width === 0) {
+    return null;
+  }
+  return (
+    <span
+      className="Gantt-Task-List_Indent"
+      style={{ width, minWidth: width, flexShrink: 0 }}
+      aria-hidden="true"
+    />
   );
 }
 
 function NameCell({
   task,
   rowWidth,
-  onExpanderClick,
 }: {
   task: Task;
   rowWidth: string;
-  onExpanderClick: (task: Task) => void;
 }): React.ReactElement {
   const { onOpenRecord } = useGanttDisplayContext();
+  const { rows, collapsed } = useHierarchyContext();
+  const row = rows.get(task.id) ?? NOT_IN_TREE;
   return (
     <div
       className="Gantt-Task-List_Cell"
@@ -72,7 +79,8 @@ function NameCell({
       title={task.name}
     >
       <div className="Gantt-Task-List_Name-Container">
-        <ExpanderToggle task={task} onExpanderClick={onExpanderClick} />
+        <IndentSpacer width={indentPx(row.depth, rowWidth)} />
+        <ExpanderToggle hasChildren={row.hasChildren} collapsed={collapsed.has(task.id)} />
         <div
           className="Gantt-Task-List_Cell__Link"
           onClick={() => onOpenRecord(task)}
@@ -149,14 +157,12 @@ function TaskListRow({
   rowWidth,
   isSelected,
   setSelectedTask,
-  onExpanderClick,
 }: {
   task: Task;
   rowHeight: number;
   rowWidth: string;
   isSelected: boolean;
   setSelectedTask: (taskId: string) => void;
-  onExpanderClick: (task: Task) => void;
 }): React.ReactElement {
   const { includeTime, formatDateShort } = useGanttDisplayContext();
   return (
@@ -174,7 +180,7 @@ function TaskListRow({
           }
         ></div>
       </div>
-      <NameCell task={task} rowWidth={rowWidth} onExpanderClick={onExpanderClick} />
+      <NameCell task={task} rowWidth={rowWidth} />
       <DateCell rowWidth={rowWidth} text={formatDateShort(task.start, includeTime)} />
       <DateCell rowWidth={rowWidth} text={formatDateShort(task.end, includeTime)} />
       <ExtraCells taskId={task.id} />
@@ -190,7 +196,6 @@ export function TaskListTable({
   fontSize,
   selectedTaskId,
   setSelectedTask,
-  onExpanderClick,
 }: TaskListTableProps): React.ReactElement {
   return (
     <div
@@ -208,7 +213,6 @@ export function TaskListTable({
           rowWidth={rowWidth}
           isSelected={selectedTaskId === t.id}
           setSelectedTask={setSelectedTask}
-          onExpanderClick={onExpanderClick}
         />
       ))}
     </div>

@@ -21,12 +21,20 @@ import {
   ExtraColumnsContextValue,
 } from "./extra-columns-context";
 import { ExtraColumnsNotice } from "./extra-columns-notice";
+import {
+  HierarchyContext,
+  HierarchyContextValue,
+  HierarchyRowInfo,
+} from "./hierarchy-context";
 import { isErrorDialogOptions } from "../helper";
 import { ExtraColumnDef } from "../columns";
+import { HierarchyRow } from "../hierarchy";
+import { TaskNode } from "../task-mapping";
 
 export type UniversalGanttProps = {
   context: ComponentFramework.Context<IInputs>;
-  tasks: Task[];
+  /** Tasks in display order with depth and hasChildren (fork customization #1). */
+  rows: readonly HierarchyRow<TaskNode>[];
   locale: string;
   recordDisplayName: string;
   startDisplayName: string;
@@ -49,7 +57,6 @@ export type UniversalGanttProps = {
   columnWidthWeek: number;
   columnWidthMonth: number;
   onViewChange: (viewMode: ViewMode) => void;
-  onExpanderStateChange: (itemId: string, expanderState: boolean) => void;
   /** Validated extra list columns (fork customization #2). */
   extraColumns: readonly ExtraColumnDef[];
   /** Record id -> extra column texts, in extraColumns order. */
@@ -69,6 +76,33 @@ function useExtraColumnsValue(
   return React.useMemo<ExtraColumnsContextValue>(
     () => ({ columns, cellTexts }),
     [columns, cellTexts]
+  );
+}
+
+/** Nothing collapsed yet: everything is expanded. */
+const NONE_COLLAPSED: ReadonlySet<string> = new Set();
+
+/**
+ * The tree for this render (ADR-010): the tasks for <Gantt> in tree order,
+ * and the HierarchyContext value for the list's indentation and expander.
+ * Recomputed only when the rows change. <Gantt> gets no onExpanderClick: the
+ * library's own collapse (project-only, recursive getChildren) must never run.
+ */
+function useTree(rows: readonly HierarchyRow<TaskNode>[]): {
+  tasks: Task[];
+  hierarchyValue: HierarchyContextValue;
+} {
+  return React.useMemo(
+    () => ({
+      tasks: rows.map((row) => row.node.task),
+      hierarchyValue: {
+        rows: new Map<string, HierarchyRowInfo>(
+          rows.map((row) => [row.node.id, { depth: row.depth, hasChildren: row.hasChildren }])
+        ),
+        collapsed: NONE_COLLAPSED,
+      },
+    }),
+    [rows]
   );
 }
 
@@ -111,9 +145,10 @@ function useDisplayContextValue(
 export const UniversalGantt: React.FunctionComponent<UniversalGanttProps> = (
   props
 ) => {
-  // The extra-columns props are for this component only; keep them out of
-  // the spread into <Gantt>.
+  // The rows and extra-columns props are for this component only; keep them
+  // out of the spread into <Gantt>.
   const {
+    rows,
     extraColumns,
     extraCellTexts,
     extraColumnMessages,
@@ -189,10 +224,6 @@ export const UniversalGantt: React.FunctionComponent<UniversalGanttProps> = (
     }
   };
 
-  const handleExpanderClick = (task: Task) => {
-    props.onExpanderStateChange(task.id, !!task.hideChildren);
-  };
-
   // Styling
   const formatDateShort = React.useCallback(
     (value: Date, includeTime?: boolean) => {
@@ -207,6 +238,7 @@ export const UniversalGantt: React.FunctionComponent<UniversalGanttProps> = (
     handleOpenRecord
   );
   const extraColumnsValue = useExtraColumnsValue(extraColumns, extraCellTexts);
+  const { tasks, hierarchyValue } = useTree(rows);
 
   const options: StylingOption & EventOption = {
     fontSize: props.fontSize,
@@ -253,16 +285,18 @@ export const UniversalGantt: React.FunctionComponent<UniversalGanttProps> = (
       <ExtraColumnsNotice messages={extraColumnMessages} />
       <GanttDisplayContext.Provider value={displayContext}>
         <ExtraColumnsContext.Provider value={extraColumnsValue}>
-          <Gantt
-            key={extraColumnsKey}
-            {...ganttProps}
-            {...options}
-            viewMode={view}
-            onDoubleClick={handleOpenRecord}
-            onDateChange={handleDateChange}
-            onSelect={handleSelect}
-            onExpanderClick={handleExpanderClick}
-          />
+          <HierarchyContext.Provider value={hierarchyValue}>
+            <Gantt
+              key={extraColumnsKey}
+              {...ganttProps}
+              {...options}
+              tasks={tasks}
+              viewMode={view}
+              onDoubleClick={handleOpenRecord}
+              onDateChange={handleDateChange}
+              onSelect={handleSelect}
+            />
+          </HierarchyContext.Provider>
         </ExtraColumnsContext.Provider>
       </GanttDisplayContext.Provider>
     </div>

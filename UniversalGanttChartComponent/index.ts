@@ -15,8 +15,8 @@ import {
   extraColumnsGanttKey,
   resolveExtraColumns,
 } from "./columns";
-import { indexRecordIds, resolveParentRecordId } from "./hierarchy";
-import { TaskNode, linkParent } from "./task-mapping";
+import { HierarchyRow, indexRecordIds, resolveParentRecordId } from "./hierarchy";
+import { TaskNode, buildHierarchy, cycleWarning } from "./task-mapping";
 
 type DataSet = ComponentFramework.PropertyTypes.DataSet;
 type DataSetRecord = ComponentFramework.PropertyHelper.DataSetApi.EntityRecord;
@@ -40,13 +40,6 @@ interface TaskFields {
   readonly parentValue: unknown;
   readonly colorText: string;
   readonly optionValue: string;
-}
-
-/** The per-call inputs buildTask shares across records. */
-interface TaskBuildInputs {
-  readonly context: ComponentFramework.Context<IInputs>;
-  readonly dataset: DataSet;
-  readonly isDisabled: boolean;
 }
 
 /** Validated extra columns, ready for UniversalGantt (fork customization #2). */
@@ -85,9 +78,8 @@ export class UniversalGanttChartComponent
   private _dataSet: DataSet;
   private _locale: string;
   private _taskTypeMap: Record<string, TaskType> | undefined;
-  private _projects: {
-    [index: string]: boolean;
-  };
+  /** The parent-cycle warning is logged once per control instance. */
+  private _cycleWarningShown = false;
   /** Last resolved extra columns and the inputs they came from. */
   private _extraColumns:
     | { readonly key: string; readonly result: ResolvedExtraColumns }
@@ -95,7 +87,6 @@ export class UniversalGanttChartComponent
 
   constructor() {
     this.handleViewModeChange = this.handleViewModeChange.bind(this);
-    this.handleExpanderStateChange = this.handleExpanderStateChange.bind(this);
     this.generateColorTheme = this.generateColorTheme.bind(this);
   }
 
@@ -112,7 +103,6 @@ export class UniversalGanttChartComponent
     this._crmUserTimeOffset =
       context.userSettings.getTimeZoneOffsetMinutes(new Date()) +
       new Date().getTimezoneOffset();
-    this._projects = {};
     context.parameters.entityDataSet.paging.setPageSize(5000);
   }
 
@@ -140,7 +130,7 @@ export class UniversalGanttChartComponent
       return;
 
     try {
-      const tasks = await this.generateTasks(
+      const rows = await this.generateRows(
         context,
         this._dataSet,
         !!progressField
@@ -194,7 +184,7 @@ export class UniversalGanttChartComponent
       //create gantt
       const gantt = React.createElement(UniversalGantt, {
         context,
-        tasks,
+        rows,
         ganttHeight,
         recordDisplayName,
         startDisplayName,
@@ -220,7 +210,6 @@ export class UniversalGanttChartComponent
         columnWidthWeek,
         columnWidthMonth,
         onViewChange: this.handleViewModeChange,
-        onExpanderStateChange: this.handleExpanderStateChange,
         extraColumns: extra.columns,
         extraCellTexts: this.getExtraCellTexts(this._dataSet, extra.columns),
         extraColumnMessages: extra.messages,
@@ -294,14 +283,24 @@ export class UniversalGanttChartComponent
     return cells;
   }
 
-  /** The view's Gantt tasks, in view order (see generateTaskNodes). */
-  private async generateTasks(
+  /**
+   * The view's tasks as tree rows (ADR-010): siblings by start, parents
+   * before children, with depth and hasChildren. Tasks on a parent cycle are
+   * still each shown once; the cycle is logged once per control instance.
+   */
+  private async generateRows(
     context: ComponentFramework.Context<IInputs>,
     dataset: ComponentFramework.PropertyTypes.DataSet,
     isProgressing: boolean
-  ): Promise<Task[]> {
+  ): Promise<readonly HierarchyRow<TaskNode>[]> {
     const nodes = await this.generateTaskNodes(context, dataset, isProgressing);
-    return nodes.map((node) => node.task);
+    const { rows, cycleIds } = buildHierarchy(nodes);
+    const warning = cycleWarning(cycleIds);
+    if (warning !== undefined && !this._cycleWarningShown) {
+      this._cycleWarningShown = true;
+      console.warn(warning);
+    }
+    return rows;
   }
 
   /**
@@ -316,11 +315,7 @@ export class UniversalGanttChartComponent
     dataset: ComponentFramework.PropertyTypes.DataSet,
     isProgressing: boolean
   ): Promise<TaskNode[]> {
-    const build: TaskBuildInputs = {
-      context,
-      dataset,
-      isDisabled: context.parameters.displayMode.raw === "readonly",
-    };
+    const isDisabled = context.parameters.displayMode.raw === "readonly";
     const themes: EntityColorTheme[] = [];
     const optionColum = dataset.columns.find(
       (c) => c.alias == this._displayColorOption
@@ -338,7 +333,7 @@ export class UniversalGanttChartComponent
       if (!fields.name || !fields.start || !fields.end) continue;
       const parentId =
         resolveParentRecordId(fields.parentValue, recordIdsByNormalized) ?? null;
-      const task = this.buildTask(build, record, fields, theme, parentId);
+      const task = this.buildTask(record, fields, theme, isDisabled);
       nodes.push({ id: task.id, parentId, task });
     }
     return nodes;
@@ -400,48 +395,17 @@ export class UniversalGanttChartComponent
   }
 
   /**
-   * A project's remembered collapse state (true = children hidden). A project
-   * seen for the first time, or last expanded, is registered as expanded.
+   * The Gantt task for one record. It carries no parent link: the tree is
+   * built and rendered by us (ADR-010), so no project grouping (D2), no
+   * hideChildren and no parent -> dependency arrows (D1).
    */
-  private expanderStateFor(taskId: string): boolean {
-    const expanderState = this._projects[taskId];
-    if (!expanderState) {
-      this._projects[taskId] = false;
-      return false;
-    }
-    return this._projects[taskId];
-  }
-
-  /**
-   * How a task attaches to its parent record (see linkParent); nothing if
-   * that record is not in the dataset. Called inside buildTask's try, so a
-   * failure here still surfaces as "Create task error".
-   */
-  private parentLinkFor(
-    build: TaskBuildInputs,
-    parentRecordId: string
-  ): Pick<Task, "project" | "dependencies"> {
-    const parentRecordRef = build.dataset.records[parentRecordId];
-    if (!parentRecordRef) {
-      return {};
-    }
-    const parentType = this.getTaskType(
-      <string>parentRecordRef.getValue(this._taskTypeOption),
-      build.context.parameters.taskTypeMapping.raw
-    );
-    return linkParent(parentType, parentRecordId);
-  }
-
-  /** The Gantt task for one record, attached to its parent (if in the view). */
   private buildTask(
-    build: TaskBuildInputs,
     record: DataSetRecord,
     fields: TaskFields,
     entityColorTheme: EntityColorTheme,
-    parentRecordId: string | null
+    isDisabled: boolean
   ): Task {
     const { name, start, end, progress, taskType } = fields;
-    const { isDisabled } = build;
     try {
       const taskId = record.getRecordId();
       const task: Task = {
@@ -458,12 +422,6 @@ export class UniversalGanttChartComponent
         isDisabled: isDisabled,
         styles: { ...entityColorTheme },
       };
-      if (taskType === "project") {
-        task.hideChildren = this.expanderStateFor(taskId);
-      }
-      if (parentRecordId !== null) {
-        Object.assign(task, this.parentLinkFor(build, parentRecordId));
-      }
       return task;
     } catch (e) {
       throw new Error(
@@ -541,11 +499,6 @@ export class UniversalGanttChartComponent
 
   private handleViewModeChange(viewMode: ViewMode) {
     this._viewMode = viewMode;
-  }
-
-  private handleExpanderStateChange(itemId: string, expanderState: boolean) {
-    this._projects[itemId] = expanderState;
-    this._dataSet.refresh();
   }
 
   private async getLocalCode(context: ComponentFramework.Context<IInputs>) {

@@ -1,17 +1,20 @@
-// index.characterization.test.ts — pins generateTasks' CURRENT output so the
-// commit-4 restructuring can be proven behaviour-neutral (byte-identical
-// snapshot before and after). It characterizes, it does not endorse: quirks
-// such as colour themes being generated for records that are then skipped are
-// recorded on purpose.
+// index.characterization.test.ts — pins the tasks the control builds from a
+// dataset (snapshot of Task[] plus the getEntityMetadata call order). Recorded
+// on the original generateTasks (commit 4 proved its refactor byte-identical);
+// changed on purpose only by ADR-010 D1/D2 (no project / dependencies /
+// hideChildren). It characterizes, it does not endorse: quirks such as colour
+// themes being generated for records that are then skipped are recorded on
+// purpose. The tree wiring (parent ids, order, cycle warning) is asserted
+// explicitly below.
 //
-// generateTasks is private; this file alone reaches it through a narrow typed
-// cast (approved for this test so the baseline runs against the untouched
-// original). The fake context is cast the same way: generateTasks reads only
-// the fields built here.
+// The methods are private; this file alone reaches them through a narrow
+// typed cast (approved for this test). The fake context is cast the same way:
+// the control reads only the fields built here.
 
-import { Task } from "gantt-task-react";
 import { IInputs } from "./generated/ManifestTypes";
 import { UniversalGanttChartComponent } from "./index";
+import { HierarchyRow } from "./hierarchy";
+import { TaskNode } from "./task-mapping";
 
 type Values = Readonly<Record<string, unknown>>;
 interface FakeRecordSpec {
@@ -21,14 +24,14 @@ interface FakeRecordSpec {
 }
 
 /** The private members this test drives. */
+type Generate<T> = (
+  context: ComponentFramework.Context<IInputs>,
+  dataset: ComponentFramework.PropertyTypes.DataSet,
+  isProgressing: boolean
+) => Promise<T>;
 interface Internals {
-  generateTasks(
-    context: ComponentFramework.Context<IInputs>,
-    dataset: ComponentFramework.PropertyTypes.DataSet,
-    isProgressing: boolean
-  ): Promise<Task[]>;
-  handleExpanderStateChange(itemId: string, expanderState: boolean): void;
-  _dataSet: { refresh(): void };
+  generateTaskNodes: Generate<TaskNode[]>;
+  generateRows: Generate<readonly HierarchyRow<TaskNode>[]>;
 }
 
 const OFFSET_MINUTES = 120;
@@ -125,13 +128,11 @@ const RECORDS: readonly FakeRecordSpec[] = [
   rec("no-end", "task", dated("No end", "2026-02-21T08:00:00Z", "")),
 ];
 
-async function run(opts: {
+function setUp(opts: {
   allocatedHeight: number;
   readonly: boolean;
   optionColumnBound: boolean;
   records?: readonly FakeRecordSpec[];
-  isProgressing?: boolean;
-  collapse?: string;
 }) {
   const metadataCalls: unknown[] = [];
   const context = fakeContext({ ...opts, metadataCalls });
@@ -139,18 +140,22 @@ async function run(opts: {
   component.init(context, () => undefined, {}, {} as unknown as HTMLDivElement);
   const internals = component as unknown as Internals;
   const dataset = fakeDataset(opts.records ?? RECORDS, opts.optionColumnBound);
-  const isProgressing = opts.isProgressing ?? true;
-  if (opts.collapse !== undefined) {
-    // First pass registers the project; the toggle then drives hideChildren.
-    await internals.generateTasks(context, dataset, isProgressing);
-    internals._dataSet = { refresh: () => undefined };
-    internals.handleExpanderStateChange(opts.collapse, true);
-  }
-  const tasks = await internals.generateTasks(context, dataset, isProgressing);
-  return { tasks, metadataCalls };
+  return { context, internals, dataset, metadataCalls };
 }
 
-describe("generateTasks — characterization (must stay byte-identical across commit 4)", () => {
+async function run(opts: {
+  allocatedHeight: number;
+  readonly: boolean;
+  optionColumnBound: boolean;
+  records?: readonly FakeRecordSpec[];
+  isProgressing?: boolean;
+}) {
+  const { context, internals, dataset, metadataCalls } = setUp(opts);
+  const nodes = await internals.generateTaskNodes(context, dataset, opts.isProgressing ?? true);
+  return { tasks: nodes.map((node) => node.task), metadataCalls };
+}
+
+describe("generateTaskNodes — characterization (Task[] + metadata calls)", () => {
   test("model app, entity colours, editable", async () => {
     expect(await run({ allocatedHeight: -1, readonly: false, optionColumnBound: false })).toMatchSnapshot();
   });
@@ -166,14 +171,76 @@ describe("generateTasks — characterization (must stay byte-identical across co
     expect(await run({ allocatedHeight: 600, readonly: false, optionColumnBound: false, isProgressing: false })).toMatchSnapshot();
   });
 
-  test("a collapsed project keeps hideChildren across passes", async () => {
-    expect(await run({ allocatedHeight: 600, readonly: false, optionColumnBound: false, collapse: P1 })).toMatchSnapshot();
-  });
-
   test("an empty view gives no tasks and no metadata calls", async () => {
     expect(await run({ allocatedHeight: -1, readonly: false, optionColumnBound: false, records: [] })).toEqual({
       tasks: [],
       metadataCalls: [],
     });
+  });
+});
+
+const MODEL = { allocatedHeight: -1, readonly: false, optionColumnBound: false };
+
+describe("generateTaskNodes — parent ids (ADR-010)", () => {
+  test("each node carries its parent's ORIGINAL record id, or null", async () => {
+    const { context, internals, dataset } = setUp(MODEL);
+    const nodes = await internals.generateTaskNodes(context, dataset, true);
+    expect(nodes.map((n) => [n.id, n.parentId])).toEqual([
+      [P1, null],
+      ["c1", P1], // braced, upper-case lookup -> original id
+      ["c2", "c1"],
+      ["c3", null], // parent not in the view
+      ["c4", null], // raw-string parent value
+      ["c5", P1], // plain-string id inside the lookup
+      ["o1", null],
+    ]);
+  });
+});
+
+describe("generateRows — tree order into the Gantt (ADR-010 D3)", () => {
+  test("parents before children, siblings by start, depth and hasChildren", async () => {
+    const { context, internals, dataset } = setUp(MODEL);
+    const rows = await internals.generateRows(context, dataset, true);
+    expect(rows.map((r) => [r.node.id, r.depth, r.hasChildren])).toEqual([
+      [P1, 0, true],
+      ["c1", 1, true],
+      ["c2", 2, false],
+      ["c5", 1, false],
+      ["c3", 0, false],
+      ["c4", 0, false],
+      ["o1", 0, false],
+    ]);
+  });
+
+});
+
+describe("generateRows — the parent-cycle warning", () => {
+  test("a parent cycle is warned about once per control instance, and every task still shows", async () => {
+    const cycle = [
+      rec("a", "task", dated("A", "2026-01-01T08:00:00Z", "2026-01-02T08:00:00Z", { parentRecord: { id: "b" } })),
+      rec("b", "task", dated("B", "2026-01-03T08:00:00Z", "2026-01-04T08:00:00Z", { parentRecord: { id: "a" } })),
+    ];
+    const warn = jest.spyOn(console, "warn").mockImplementation(() => undefined);
+    try {
+      const { context, internals, dataset } = setUp({ ...MODEL, records: cycle });
+      const first = await internals.generateRows(context, dataset, true);
+      await internals.generateRows(context, dataset, true);
+      expect(first.map((r) => r.node.id).sort()).toEqual(["a", "b"]);
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(warn.mock.calls[0][0]).toContain("2 task(s) have parent links that form a cycle (a, b)");
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  test("no cycle, no warning", async () => {
+    const warn = jest.spyOn(console, "warn").mockImplementation(() => undefined);
+    try {
+      const { context, internals, dataset } = setUp(MODEL);
+      await internals.generateRows(context, dataset, true);
+      expect(warn).not.toHaveBeenCalled();
+    } finally {
+      warn.mockRestore();
+    }
   });
 });
