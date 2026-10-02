@@ -18,5 +18,6 @@ Copy `ADR-000-template.md` to start one. Number sequentially.
 | 006 | Cost fields as Currency, not Decimal | Accepted | data-model |
 | 007 | Fork and modernize an existing Gantt PCF | Accepted | pcf |
 | 008 | Quality gate + separated Dev/QA agents | Accepted | engineering-process |
+| 010 | Build and render the task hierarchy ourselves; client-side collapse | Accepted | pcf |
 
 Keep this table current when adding an ADR.

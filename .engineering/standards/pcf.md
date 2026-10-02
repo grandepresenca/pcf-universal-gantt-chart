@@ -79,3 +79,12 @@ The control lifecycle is `init` → `updateView` (many times) → `getOutputs`
   test; the pure logic it drives is not. Extract decision logic (hierarchy,
   mapping, type resolution) into pure modules and test those directly. Keep the
   glue thin enough to verify by reading and by the local harness (`npm start`).
+- The harness does not implement `context.webAPI`: every call
+  (`retrieveMultipleRecords`, `updateRecord`, ...) fires a **blocking browser
+  `alert`** ("Your control is trying to ...") and then fails. An automated
+  harness check must not let those alerts block, or it stalls on the first
+  one. The Playwright MCP tools intercept dialogs themselves, so in-page
+  handlers never see them. Use a standalone Playwright script that replaces
+  `window.alert` via `addInitScript`, recording the message and
+  `new Error().stack`. The stack shows exactly which control code made the
+  call, which is how you tell a load-time write from an interaction.
