@@ -101,3 +101,8 @@
 .Gantt-Task-List_Name-Container {
   display: flex;
 }
+
+/* Extra columns: number, currency and date values are right-aligned. */
+.Gantt-Task-List_Cell__Right {
+  text-align: right;
+}

@@ -7,8 +7,32 @@ import { UniversalGantt } from "./components/universal-gantt";
 import { generate } from "@ant-design/colors";
 import { TaskType } from "gantt-task-react/dist/types/public-types";
 import { isErrorDialogOptions } from "./helper";
+import {
+  ExtraColumnDef,
+  buildCellTextMap,
+  describeIssue,
+  extraColumnsCacheKey,
+  extraColumnsGanttKey,
+  resolveExtraColumns,
+} from "./columns";
 
 type DataSet = ComponentFramework.PropertyTypes.DataSet;
+
+/** Validated extra columns, ready for UniversalGantt (fork customization #2). */
+interface ResolvedExtraColumns {
+  readonly columns: readonly ExtraColumnDef[];
+  /** Maker-facing issue texts for the notice. */
+  readonly messages: readonly string[];
+  /** <Gantt> key; changes only when the column set changes. */
+  readonly ganttKey: string;
+}
+
+const NO_EXTRA_COLUMNS: ResolvedExtraColumns = Object.freeze({
+  columns: Object.freeze([]),
+  messages: Object.freeze([]),
+  ganttKey: "",
+});
+const NO_CELL_TEXTS: ReadonlyMap<string, readonly string[]> = new Map();
 
 export class UniversalGanttChartComponent
   implements ComponentFramework.StandardControl<IInputs, IOutputs>
@@ -33,6 +57,10 @@ export class UniversalGanttChartComponent
   private _projects: {
     [index: string]: boolean;
   };
+  /** Last resolved extra columns and the inputs they came from. */
+  private _extraColumns:
+    | { readonly key: string; readonly result: ResolvedExtraColumns }
+    | undefined;
 
   constructor() {
     this.handleViewModeChange = this.handleViewModeChange.bind(this);
@@ -131,6 +159,7 @@ export class UniversalGanttChartComponent
         context.parameters.displayDateFormat.raw === "datetime";
 
       const fontSize = context.parameters.fontSize.raw || "14px";
+      const extra = this.getExtraColumns(context, this._dataSet);
       //create gantt
       const gantt = React.createElement(UniversalGantt, {
         context,
@@ -161,12 +190,77 @@ export class UniversalGanttChartComponent
         columnWidthMonth,
         onViewChange: this.handleViewModeChange,
         onExpanderStateChange: this.handleExpanderStateChange,
+        extraColumns: extra.columns,
+        extraCellTexts: this.getExtraCellTexts(this._dataSet, extra.columns),
+        extraColumnMessages: extra.messages,
+        extraColumnsKey: extra.ganttKey,
       });
 
       ReactDOM.render(gantt, this._container);
     } catch (e) {
       console.error(e);
     }
+  }
+
+  /**
+   * The extra columns for this updateView. Re-validates only when the config,
+   * the dataset's columns or listCellWidth change; otherwise returns the same
+   * object, so resize and refresh stay cheap and the <Gantt> key is stable.
+   * Issues are logged once per change, not on every updateView.
+   */
+  private getExtraColumns(
+    context: ComponentFramework.Context<IInputs>,
+    dataset: DataSet
+  ): ResolvedExtraColumns {
+    // While loading, the column list can be incomplete and would report false
+    // "unknown column" issues, so keep the last result. This guard covers
+    // extra-column validation only; the rest of updateView is unchanged.
+    if (dataset.loading) {
+      return this._extraColumns?.result ?? NO_EXTRA_COLUMNS;
+    }
+    const raw = context.parameters.extraColumns.raw;
+    const defaultWidthPx = context.parameters.listCellWidth.raw ?? 0;
+    const key = extraColumnsCacheKey(raw, dataset.columns, defaultWidthPx);
+    if (this._extraColumns?.key === key) {
+      return this._extraColumns.result;
+    }
+    const { columns, issues } = resolveExtraColumns(raw, dataset.columns, {
+      defaultWidthPx,
+    });
+    const messages = issues.map(describeIssue);
+    messages.forEach((message) => console.warn(message));
+    const result: ResolvedExtraColumns =
+      columns.length === 0 && messages.length === 0
+        ? NO_EXTRA_COLUMNS
+        : { columns, messages, ganttKey: extraColumnsGanttKey(columns) };
+    this._extraColumns = { key, result };
+    return result;
+  }
+
+  /**
+   * Formatted texts of the extra columns per record id. Nothing is read when
+   * there are no extra columns. A record whose getFormattedValue throws gets
+   * empty cells instead of failing the whole chart.
+   */
+  private getExtraCellTexts(
+    dataset: DataSet,
+    columns: readonly ExtraColumnDef[]
+  ): ReadonlyMap<string, readonly string[]> {
+    if (columns.length === 0) {
+      return NO_CELL_TEXTS;
+    }
+    const { cells, failedIds } = buildCellTextMap(
+      dataset.sortedRecordIds,
+      (id) => dataset.records[id],
+      columns
+    );
+    if (failedIds.length > 0) {
+      console.warn(
+        `Extra columns: reading values failed for ${failedIds.length} record(s); their extra cells are empty.`,
+        failedIds
+      );
+    }
+    return cells;
   }
 
   private async generateTasks(

@@ -50,6 +50,10 @@ The control lifecycle is `init` → `updateView` (many times) → `getOutputs`
   read as a string, or a `Date.All` mishandled for time zones, is a latent bug.
 - `usage="input"` vs `bound`, `required` true/false — declare honestly;
   `required="false"` means you must handle its absence in code.
+- Before bumping, read the current control version from
+  `ControlManifest.Input.xml` and the solution version from `Solution.xml` —
+  never assume from memory or a prompt. (A task prompt has given the wrong
+  current versions twice.)
 
 ## Writing back to Dataverse
 - Writes go through `context.webAPI` (`updateRecord`, etc.) and are asynchronous

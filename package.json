@@ -14,7 +14,7 @@
     "start": "pcf-scripts start",
     "refreshTypes": "pcf-scripts refreshTypes",
     "typecheck": "tsc --noEmit",
-    "test": "jest --passWithNoTests",
+    "test": "jest --coverage",
     "test:watch": "jest --watch",
     "lint": "eslint UniversalGanttChartComponent --ext .ts,.tsx"
   },

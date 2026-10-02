@@ -43,3 +43,15 @@ Applies to `.tsx` components. React 17 in this repo.
   defaults; required props are required in the type.
 - Prefer composition over deep prop-drilling or configuration flags. If a
   component sprouts many boolean props, it may be several components.
+- Don't spread a component's whole props into a third-party component
+  (`<Gantt {...props}>`) once those props include your own fields.
+  Destructure your fields out first and spread only the rest — unknown props
+  leak into a library you don't control (DOM attributes, warnings, or a
+  future prop name clash).
+
+## Layout
+- In a fixed-width table cell (`minWidth` = `maxWidth`), add spacing with a
+  non-breaking space (`&nbsp;`) in the content, not padding. With the default
+  `box-sizing`, padding adds to the cell's width and breaks the alignment
+  between the separately rendered header and rows. The existing list cells
+  already use `&nbsp;`.

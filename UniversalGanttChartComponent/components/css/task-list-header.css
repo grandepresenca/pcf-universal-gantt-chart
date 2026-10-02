@@ -67,3 +67,10 @@
 .Gantt-Header_Select__Icon::after {
   content: "\2714";
 }
+
+/* Extra columns: a long label truncates instead of widening the column. */
+.Gantt-Table_Header-Item__Extra {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

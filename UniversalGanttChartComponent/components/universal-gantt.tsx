@@ -7,12 +7,22 @@ import {
   ViewMode,
   DisplayOption,
 } from "gantt-task-react";
-import { createHeaderLocal } from "./task-list-header";
+import { TaskListHeader } from "./task-list-header";
 import { ViewSwitcher } from "./view-switcher";
 import { IInputs } from "../generated/ManifestTypes";
-import { createTooltip } from "./gantt-tooltip";
-import { createTaskListLocal } from "./task-list-table";
+import { TooltipContent } from "./gantt-tooltip";
+import { TaskListTable } from "./task-list-table";
+import {
+  GanttDisplayContext,
+  GanttDisplayContextValue,
+} from "./gantt-display-context";
+import {
+  ExtraColumnsContext,
+  ExtraColumnsContextValue,
+} from "./extra-columns-context";
+import { ExtraColumnsNotice } from "./extra-columns-notice";
 import { isErrorDialogOptions } from "../helper";
+import { ExtraColumnDef } from "../columns";
 
 export type UniversalGanttProps = {
   context: ComponentFramework.Context<IInputs>;
@@ -40,11 +50,76 @@ export type UniversalGanttProps = {
   columnWidthMonth: number;
   onViewChange: (viewMode: ViewMode) => void;
   onExpanderStateChange: (itemId: string, expanderState: boolean) => void;
+  /** Validated extra list columns (fork customization #2). */
+  extraColumns: readonly ExtraColumnDef[];
+  /** Record id -> extra column texts, in extraColumns order. */
+  extraCellTexts: ReadonlyMap<string, readonly string[]>;
+  /** Maker-facing extra-columns configuration issues; empty when fine. */
+  extraColumnMessages: readonly string[];
+  /** Remounts <Gantt> when the extra column set changes (list width). */
+  extraColumnsKey: string;
 } & EventOption &
   DisplayOption;
+
+/** Builds the ExtraColumnsContext value; recomputed only when an input changes. */
+function useExtraColumnsValue(
+  columns: readonly ExtraColumnDef[],
+  cellTexts: ReadonlyMap<string, readonly string[]>
+): ExtraColumnsContextValue {
+  return React.useMemo<ExtraColumnsContextValue>(
+    () => ({ columns, cellTexts }),
+    [columns, cellTexts]
+  );
+}
+
+/** Builds the GanttDisplayContext value; recomputed only when an input changes. */
+function useDisplayContextValue(
+  props: UniversalGanttProps,
+  formatDateShort: (value: Date, includeTime?: boolean) => string,
+  onOpenRecord: (task: Task) => void
+): GanttDisplayContextValue {
+  const { recordDisplayName, startDisplayName, endDisplayName } = props;
+  const { progressDisplayName, includeTime, context } = props;
+  const durationDisplayName = context.resources.getString("Duration");
+  const metricDisplayName = context.resources.getString("Duration_Metric");
+  return React.useMemo<GanttDisplayContextValue>(
+    () => ({
+      recordDisplayName,
+      startDisplayName,
+      endDisplayName,
+      progressDisplayName,
+      durationDisplayName,
+      metricDisplayName,
+      includeTime,
+      formatDateShort,
+      onOpenRecord,
+    }),
+    [
+      recordDisplayName,
+      startDisplayName,
+      endDisplayName,
+      progressDisplayName,
+      durationDisplayName,
+      metricDisplayName,
+      includeTime,
+      formatDateShort,
+      onOpenRecord,
+    ]
+  );
+}
+
 export const UniversalGantt: React.FunctionComponent<UniversalGanttProps> = (
   props
 ) => {
+  // The extra-columns props are for this component only; keep them out of
+  // the spread into <Gantt>.
+  const {
+    extraColumns,
+    extraCellTexts,
+    extraColumnMessages,
+    extraColumnsKey,
+    ...ganttProps
+  } = props;
   const [view, setView] = React.useState(props.viewMode);
   const { context } = props;
   // Events
@@ -97,11 +172,14 @@ export const UniversalGantt: React.FunctionComponent<UniversalGanttProps> = (
     return resultState;
   };
 
-  const handleOpenRecord = async (task: Task) => {
-    const recordRef =
-      context.parameters.entityDataSet.records[task.id].getNamedReference();
-    context.parameters.entityDataSet.openDatasetItem(recordRef);
-  };
+  const handleOpenRecord = React.useCallback(
+    async (task: Task) => {
+      const recordRef =
+        context.parameters.entityDataSet.records[task.id].getNamedReference();
+      context.parameters.entityDataSet.openDatasetItem(recordRef);
+    },
+    [context]
+  );
 
   const handleSelect = (task: Task, isSelected: boolean) => {
     if (isSelected) {
@@ -116,9 +194,19 @@ export const UniversalGantt: React.FunctionComponent<UniversalGanttProps> = (
   };
 
   // Styling
-  const formatDateShort = (value: Date, includeTime?: boolean) => {
-    return context.formatting.formatDateShort(value, includeTime);
-  };
+  const formatDateShort = React.useCallback(
+    (value: Date, includeTime?: boolean) => {
+      return context.formatting.formatDateShort(value, includeTime);
+    },
+    [context]
+  );
+
+  const displayContext = useDisplayContextValue(
+    props,
+    formatDateShort,
+    handleOpenRecord
+  );
+  const extraColumnsValue = useExtraColumnsValue(extraColumns, extraCellTexts);
 
   const options: StylingOption & EventOption = {
     fontSize: props.fontSize,
@@ -127,25 +215,9 @@ export const UniversalGantt: React.FunctionComponent<UniversalGanttProps> = (
     rowHeight: props.rowHeight,
     barCornerRadius: 0,
     listCellWidth: props.listCellWidth,
-    TaskListHeader: createHeaderLocal(
-      props.recordDisplayName,
-      props.startDisplayName,
-      props.endDisplayName
-    ),
-    TooltipContent: createTooltip(
-      props.startDisplayName,
-      props.endDisplayName,
-      props.progressDisplayName,
-      context.resources.getString("Duration"),
-      context.resources.getString("Duration_Metric"),
-      props.includeTime,
-      formatDateShort
-    ),
-    TaskListTable: createTaskListLocal(
-      props.includeTime,
-      handleOpenRecord,
-      formatDateShort
-    ),
+    TaskListHeader: TaskListHeader,
+    TooltipContent: TooltipContent,
+    TaskListTable: TaskListTable,
   };
 
   switch (view) {
@@ -178,15 +250,21 @@ export const UniversalGantt: React.FunctionComponent<UniversalGanttProps> = (
           setView(viewMode);
         }}
       />
-      <Gantt
-        {...props}
-        {...options}
-        viewMode={view}
-        onDoubleClick={handleOpenRecord}
-        onDateChange={handleDateChange}
-        onSelect={handleSelect}
-        onExpanderClick={handleExpanderClick}
-      />
+      <ExtraColumnsNotice messages={extraColumnMessages} />
+      <GanttDisplayContext.Provider value={displayContext}>
+        <ExtraColumnsContext.Provider value={extraColumnsValue}>
+          <Gantt
+            key={extraColumnsKey}
+            {...ganttProps}
+            {...options}
+            viewMode={view}
+            onDoubleClick={handleOpenRecord}
+            onDateChange={handleDateChange}
+            onSelect={handleSelect}
+            onExpanderClick={handleExpanderClick}
+          />
+        </ExtraColumnsContext.Provider>
+      </GanttDisplayContext.Provider>
     </div>
   );
 };
