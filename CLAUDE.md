@@ -73,6 +73,11 @@ When unsure which bucket, treat it as high risk.
   just because it's there; understand it, then decide.
 - Never fix what you don't understand. If the cause isn't clear, investigate
   or ask — do not apply a change hoping it works.
+- "Verified in the deploy" and "merged to master" are separate gates. Before
+  relying on one branch containing another's work (rebasing onto it, calling
+  a precondition closed), check the merge in git (`git fetch`, then
+  `git merge-base --is-ancestor`, or the PR state). A feature was once called
+  merged because it had been validated in the deploy; git showed it wasn't.
 
 ### Definition of Done — verified, not claimed
 A task is done only when, checked by running the commands:
