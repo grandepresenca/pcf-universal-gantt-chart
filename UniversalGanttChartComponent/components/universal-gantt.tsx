@@ -28,8 +28,8 @@ import {
 } from "./hierarchy-context";
 import { isErrorDialogOptions } from "../helper";
 import { ExtraColumnDef } from "../columns";
-import { HierarchyRow } from "../hierarchy";
-import { TaskNode } from "../task-mapping";
+import { HierarchyRow, toggleCollapsed } from "../hierarchy";
+import { TaskNode, visibleTasks } from "../task-mapping";
 
 export type UniversalGanttProps = {
   context: ComponentFramework.Context<IInputs>;
@@ -79,31 +79,39 @@ function useExtraColumnsValue(
   );
 }
 
-/** Nothing collapsed yet: everything is expanded. */
+/** The initial state: nothing collapsed, everything expanded. */
 const NONE_COLLAPSED: ReadonlySet<string> = new Set();
 
 /**
- * The tree for this render (ADR-010): the tasks for <Gantt> in tree order,
- * and the HierarchyContext value for the list's indentation and expander.
- * Recomputed only when the rows change. <Gantt> gets no onExpanderClick: the
- * library's own collapse (project-only, recursive getChildren) must never run.
+ * The tree for this render (ADR-010): the collapsed set (client-side state,
+ * so a toggle costs no server round-trip; it survives updateView and the
+ * <Gantt key> remount and starts all-expanded), the tasks for <Gantt> with
+ * collapsed subtrees left out, and the HierarchyContext value. <Gantt> gets
+ * no onExpanderClick: the library's own collapse (project-only, recursive
+ * getChildren) must never run.
  */
 function useTree(rows: readonly HierarchyRow<TaskNode>[]): {
   tasks: Task[];
   hierarchyValue: HierarchyContextValue;
 } {
-  return React.useMemo(
-    () => ({
-      tasks: rows.map((row) => row.node.task),
-      hierarchyValue: {
-        rows: new Map<string, HierarchyRowInfo>(
-          rows.map((row) => [row.node.id, { depth: row.depth, hasChildren: row.hasChildren }])
-        ),
-        collapsed: NONE_COLLAPSED,
-      },
-    }),
+  const [collapsed, setCollapsed] = React.useState<ReadonlySet<string>>(NONE_COLLAPSED);
+  const toggle = React.useCallback(
+    (taskId: string) => setCollapsed((current) => toggleCollapsed(current, taskId)),
+    []
+  );
+  const rowInfo = React.useMemo(
+    () =>
+      new Map<string, HierarchyRowInfo>(
+        rows.map((row) => [row.node.id, { depth: row.depth, hasChildren: row.hasChildren }])
+      ),
     [rows]
   );
+  const tasks = React.useMemo(() => visibleTasks(rows, collapsed), [rows, collapsed]);
+  const hierarchyValue = React.useMemo<HierarchyContextValue>(
+    () => ({ rows: rowInfo, collapsed, toggle }),
+    [rowInfo, collapsed, toggle]
+  );
+  return { tasks, hierarchyValue };
 }
 
 /** Builds the GanttDisplayContext value; recomputed only when an input changes. */

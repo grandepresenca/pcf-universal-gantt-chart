@@ -13,6 +13,7 @@ import {
   readParentId,
   resolveParentRecordId,
   sortByStart,
+  toggleCollapsed,
   visibleRows,
 } from "./hierarchy";
 
@@ -307,5 +308,23 @@ describe("findCycleIds", () => {
 
   test("a duplicate id on a cycle is reported once", () => {
     expect(findCycleIds([n("a", "b"), n("b", "a"), n("a", "b")])).toEqual(["a", "b"]);
+  });
+});
+
+describe("toggleCollapsed", () => {
+  test("adds an absent id and removes a present one", () => {
+    expect(Array.from(toggleCollapsed(new Set(["a"]), "b"))).toEqual(["a", "b"]);
+    expect(Array.from(toggleCollapsed(new Set(["a", "b"]), "a"))).toEqual(["b"]);
+  });
+
+  test("returns a NEW set and leaves the input untouched (React must see a change)", () => {
+    const before: ReadonlySet<string> = new Set(["a"]);
+    const after = toggleCollapsed(before, "a");
+    expect(after).not.toBe(before);
+    expect(Array.from(before)).toEqual(["a"]);
+  });
+
+  test("toggling twice restores the original contents", () => {
+    expect(Array.from(toggleCollapsed(toggleCollapsed(new Set(["x"]), "y"), "y"))).toEqual(["x"]);
   });
 });

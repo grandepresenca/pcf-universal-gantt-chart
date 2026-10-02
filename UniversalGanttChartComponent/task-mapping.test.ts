@@ -1,7 +1,7 @@
 // task-mapping.test.ts — the display pipeline and the cycle warning.
 
 import { Task } from "gantt-task-react";
-import { TaskNode, buildHierarchy, cycleWarning } from "./task-mapping";
+import { TaskNode, buildHierarchy, cycleWarning, visibleTasks } from "./task-mapping";
 
 const node = (id: string, parentId: string | null, iso: string, endIso: string = iso): TaskNode => {
   const task: Task = { id, name: id, start: new Date(iso), end: new Date(endIso), progress: 0, type: "task" };
@@ -105,5 +105,28 @@ describe("cycleWarning", () => {
     expect(message).toContain("12 task(s)");
     expect(message).toContain("(t0, t1, t2, t3, t4, t5, t6, t7, t8, t9 and 2 more)");
     expect(message).not.toContain("t10");
+  });
+});
+
+describe("visibleTasks", () => {
+  const tree = buildHierarchy([
+    node("p", null, "2026-01-01"),
+    node("c", "p", "2026-01-02"),
+    node("g", "c", "2026-01-03"),
+    node("q", null, "2026-02-01"),
+  ]).rows;
+  const ids = (collapsed: string[]): string[] => visibleTasks(tree, new Set(collapsed)).map((t) => t.id);
+
+  test("nothing collapsed: every task, in tree order", () => {
+    expect(ids([])).toEqual(["p", "c", "g", "q"]);
+  });
+
+  test("a collapsed task stays; its whole subtree is hidden", () => {
+    expect(ids(["p"])).toEqual(["p", "q"]);
+    expect(ids(["c"])).toEqual(["p", "c", "q"]);
+  });
+
+  test("returns the tasks themselves (same objects the rows carry)", () => {
+    expect(visibleTasks(tree, new Set())[0]).toBe(tree[0].node.task);
   });
 });

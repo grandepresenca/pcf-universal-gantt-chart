@@ -11,6 +11,7 @@ import {
   findCycleIds,
   orderByHierarchy,
   sortByStart,
+  visibleRows,
 } from "./hierarchy";
 
 /** A built task plus its parent's record id (null if none in the view). */
@@ -36,6 +37,18 @@ export function buildHierarchy(nodes: readonly TaskNode[]): Hierarchy {
     rows: buildRows(orderByHierarchy(sorted)),
     cycleIds: findCycleIds(nodes),
   };
+}
+
+/**
+ * The tasks <Gantt> draws: the rows still visible once every collapsed
+ * task's whole subtree is hidden (the collapsed task itself stays), in tree
+ * order.
+ */
+export function visibleTasks(
+  rows: readonly HierarchyRow<TaskNode>[],
+  collapsed: ReadonlySet<string>
+): Task[] {
+  return visibleRows(rows, collapsed).map((row) => row.node.task);
 }
 
 /** How many cycle ids the warning lists before summarizing the rest. */

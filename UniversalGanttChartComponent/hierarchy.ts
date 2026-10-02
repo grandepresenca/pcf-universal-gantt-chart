@@ -318,6 +318,21 @@ export function visibleRows<T extends HierNode>(
   return out;
 }
 
+/**
+ * The collapsed set with `id` toggled: added if absent, removed if present.
+ * Always returns a NEW set and never mutates `collapsed`, so a React state
+ * update sees the change.
+ */
+export function toggleCollapsed(collapsed: ReadonlySet<string>, id: string): ReadonlySet<string> {
+  const next = new Set(collapsed);
+  if (next.has(id)) {
+    next.delete(id);
+  } else {
+    next.add(id);
+  }
+  return next;
+}
+
 /** The parent index of node i (first index for its parent id), or -1. */
 function parentIndex<T extends HierNode>(
   nodes: readonly T[],

@@ -1,12 +1,12 @@
 // task-list-table.test.tsx — the list table's hierarchy markup (indentation
-// spacer, expander glyph) next to the extra-columns cells. Rendered to static
-// markup in node: no DOM, no new test dependency. Interaction (collapse) is
-// verified on deploy.
+// spacer, expander toggle) next to the extra-columns cells, rendered to static
+// markup in node, and the toggle's handlers called directly. No DOM, no new
+// test dependency. The full collapse interaction is verified on deploy.
 
 import * as React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { Task } from "gantt-task-react";
-import { TaskListTable } from "./task-list-table";
+import { ExpanderToggle, TaskListTable } from "./task-list-table";
 import { GanttDisplayContext, GanttDisplayContextValue } from "./gantt-display-context";
 import { ExtraColumnsContext, ExtraColumnsContextValue } from "./extra-columns-context";
 import { HierarchyContext, HierarchyRowInfo } from "./hierarchy-context";
@@ -41,7 +41,7 @@ function render(
     <GanttDisplayContext.Provider value={DISPLAY}>
       <ExtraColumnsContext.Provider value={extra}>
         <HierarchyContext.Provider
-          value={{ rows: new Map(rows), collapsed: new Set(options.collapsed ?? []) }}
+          value={{ rows: new Map(rows), collapsed: new Set(options.collapsed ?? []), toggle: () => undefined }}
         >
           <TaskListTable
             rowHeight={40}
@@ -103,7 +103,7 @@ describe("TaskListTable — indentation", () => {
 });
 
 describe("TaskListTable — expander and extra columns", () => {
-  test("▼ on an expanded parent, ▶ on a collapsed one, an empty spacer without children", () => {
+  test("▼ (expanded) / ▶ (collapsed) buttons on parents; a plain empty spacer without children", () => {
     const html = render(
       [
         ["open", { depth: 0, hasChildren: true }],
@@ -112,9 +112,14 @@ describe("TaskListTable — expander and extra columns", () => {
       ],
       { collapsed: ["shut"] }
     );
-    expect(rowOf(html, "open")).toContain('class="Gantt-Task-List_Cell__Expander">▼<');
-    expect(rowOf(html, "shut")).toContain('class="Gantt-Task-List_Cell__Expander">▶<');
-    expect(rowOf(html, "leaf")).toContain('class="Gantt-Task-List_Cell__Empty-Expander"></div>');
+    expect(rowOf(html, "open")).toContain(
+      'class="Gantt-Task-List_Cell__Expander" role="button" tabindex="0" aria-expanded="true">▼<'
+    );
+    expect(rowOf(html, "shut")).toContain(
+      'class="Gantt-Task-List_Cell__Expander" role="button" tabindex="0" aria-expanded="false">▶<'
+    );
+    expect(rowOf(html, "leaf")).toContain('<div class="Gantt-Task-List_Cell__Empty-Expander"></div>');
+    expect(rowOf(html, "leaf")).not.toContain('role="button"');
   });
 
   test("no loaded children, no expander glyph (whatever the task type)", () => {
@@ -130,5 +135,49 @@ describe("TaskListTable — expander and extra columns", () => {
     const row = rowOf(render([["c", { depth: 2, hasChildren: false }]], { extra }), "c");
     expect(row).toContain("width:32px");
     expect(row.indexOf("2026-01-02")).toBeLessThan(row.indexOf("5.15.4"));
+  });
+});
+
+/** Calls ExpanderToggle as a plain function and returns its element's props. */
+function toggleProps(hasChildren: boolean, collapsed: boolean, onToggle: () => void) {
+  const element = ExpanderToggle({ hasChildren, collapsed, onToggle });
+  return element.props as {
+    onClick?: (e: { stopPropagation(): void }) => void;
+    onKeyDown?: (e: { key: string; preventDefault(): void; stopPropagation(): void }) => void;
+  };
+}
+
+const fakeEvent = (key = "") => ({ key, preventDefault: jest.fn(), stopPropagation: jest.fn() });
+
+describe("ExpanderToggle — interaction", () => {
+  test("a click toggles and does NOT bubble to the row (which would select it)", () => {
+    const onToggle = jest.fn();
+    const event = fakeEvent();
+    toggleProps(true, false, onToggle).onClick?.(event);
+    expect(onToggle).toHaveBeenCalledTimes(1);
+    expect(event.stopPropagation).toHaveBeenCalled();
+  });
+
+  test.each(["Enter", " "])("the %p key toggles, without scrolling or bubbling", (key) => {
+    const onToggle = jest.fn();
+    const event = fakeEvent(key);
+    toggleProps(true, true, onToggle).onKeyDown?.(event);
+    expect(onToggle).toHaveBeenCalledTimes(1);
+    expect(event.preventDefault).toHaveBeenCalled();
+    expect(event.stopPropagation).toHaveBeenCalled();
+  });
+
+  test("other keys do nothing (Tab keeps moving focus)", () => {
+    const onToggle = jest.fn();
+    const event = fakeEvent("Tab");
+    toggleProps(true, false, onToggle).onKeyDown?.(event);
+    expect(onToggle).not.toHaveBeenCalled();
+    expect(event.preventDefault).not.toHaveBeenCalled();
+  });
+
+  test("a row without children has no handlers at all", () => {
+    const props = toggleProps(false, false, jest.fn());
+    expect(props.onClick).toBeUndefined();
+    expect(props.onKeyDown).toBeUndefined();
   });
 });

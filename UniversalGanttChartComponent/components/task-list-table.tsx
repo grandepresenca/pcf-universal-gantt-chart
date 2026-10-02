@@ -23,22 +23,41 @@ export interface TaskListTableProps {
 /** A task missing from the tree (should not happen) renders as a childless root. */
 const NOT_IN_TREE: HierarchyRowInfo = { depth: 0, hasChildren: false };
 
-/** The ▼/▶ glyph for rows with loaded children; an empty spacer otherwise. */
-function ExpanderToggle({
+/**
+ * The ▼/▶ toggle for rows with loaded children; an empty spacer otherwise.
+ * Click, Enter or Space toggles without selecting the row (the row's own
+ * click selects). Exported for tests: it takes plain props, no context.
+ */
+export function ExpanderToggle({
   hasChildren,
   collapsed,
+  onToggle,
 }: {
   hasChildren: boolean;
   collapsed: boolean;
+  onToggle: () => void;
 }): React.ReactElement {
   const glyph = expanderSymbol(hasChildren, collapsed);
+  if (!glyph) {
+    return <div className="Gantt-Task-List_Cell__Empty-Expander"></div>;
+  }
   return (
     <div
-      className={
-        glyph
-          ? "Gantt-Task-List_Cell__Expander"
-          : "Gantt-Task-List_Cell__Empty-Expander"
-      }
+      className="Gantt-Task-List_Cell__Expander"
+      role="button"
+      tabIndex={0}
+      aria-expanded={!collapsed}
+      onClick={(e) => {
+        e.stopPropagation();
+        onToggle();
+      }}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          e.stopPropagation();
+          onToggle();
+        }
+      }}
     >
       {glyph}
     </div>
@@ -67,7 +86,7 @@ function NameCell({
   rowWidth: string;
 }): React.ReactElement {
   const { onOpenRecord } = useGanttDisplayContext();
-  const { rows, collapsed } = useHierarchyContext();
+  const { rows, collapsed, toggle } = useHierarchyContext();
   const row = rows.get(task.id) ?? NOT_IN_TREE;
   return (
     <div
@@ -80,7 +99,11 @@ function NameCell({
     >
       <div className="Gantt-Task-List_Name-Container">
         <IndentSpacer width={indentPx(row.depth, rowWidth)} />
-        <ExpanderToggle hasChildren={row.hasChildren} collapsed={collapsed.has(task.id)} />
+        <ExpanderToggle
+          hasChildren={row.hasChildren}
+          collapsed={collapsed.has(task.id)}
+          onToggle={() => toggle(task.id)}
+        />
         <div
           className="Gantt-Task-List_Cell__Link"
           onClick={() => onOpenRecord(task)}

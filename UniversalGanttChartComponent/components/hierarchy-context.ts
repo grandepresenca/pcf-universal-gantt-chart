@@ -20,6 +20,8 @@ export interface HierarchyContextValue {
   readonly rows: ReadonlyMap<string, HierarchyRowInfo>;
   /** Ids of collapsed tasks (their subtree is hidden). */
   readonly collapsed: ReadonlySet<string>;
+  /** Collapses an expanded task, or expands a collapsed one. Client-side only. */
+  readonly toggle: (taskId: string) => void;
 }
 
 export const HierarchyContext =
