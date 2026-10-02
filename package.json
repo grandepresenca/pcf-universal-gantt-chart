@@ -16,7 +16,9 @@
     "typecheck": "tsc --noEmit",
     "test": "jest --coverage",
     "test:watch": "jest --watch",
-    "lint": "eslint UniversalGanttChartComponent --ext .ts,.tsx"
+    "lint": "eslint UniversalGanttChartComponent tools --ext .ts,.tsx",
+    "validator:build": "tsc -p tools/migration-validation",
+    "validator": "node tools/migration-validation/dist/tools/migration-validation/src/cli.js"
   },
   "dependencies": {
     "@ant-design/colors": "^6.0.0",

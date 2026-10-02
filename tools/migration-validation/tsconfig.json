@@ -1,0 +1,13 @@
+{
+  "compilerOptions": {
+    "target": "es2019",
+    "lib": ["es2019"],
+    "module": "commonjs",
+    "strict": true,
+    "rootDir": "../..",
+    "outDir": "dist",
+    "types": ["node"],
+    "skipLibCheck": true
+  },
+  "files": ["src/cli.ts"]
+}

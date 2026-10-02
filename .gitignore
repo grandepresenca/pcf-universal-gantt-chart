@@ -21,3 +21,8 @@
 
 # Jest coverage output
 /coverage
+
+# Migration validator: build output, real extracts and reports (customer data) — never commit
+/tools/migration-validation/dist
+/tools/migration-validation/extracts
+/tools/migration-validation/reports
