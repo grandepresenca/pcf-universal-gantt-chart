@@ -52,7 +52,7 @@ only draws bars for the rows we give it, in the order we give them.**
      depths. Orphans become roots. It is cycle-safe and has no recursion.
    - `buildRows` adds `hasChildren`, and `visibleRows` handles collapse.
    - `findCycleIds` reports the tasks that sit on a parent cycle.
-2. **Parent matching** (commit b905249):
+2. **Parent matching** (commit "feat(hierarchy): read parent ids safely and match them by normalized id"):
    - `readParentId` is strict: only a real lookup shape counts. A plain string
      value is "no parent", never a crash.
    - `normalizeId` (trim, strip one pair of `{}`, lower-case) is applied to
