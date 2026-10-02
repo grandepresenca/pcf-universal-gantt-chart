@@ -55,6 +55,32 @@ The control lifecycle is `init` → `updateView` (many times) → `getOutputs`
   never assume from memory or a prompt. (A task prompt has given the wrong
   current versions twice.)
 
+## Packaging and deploy (solution zip)
+Every point below caught us out in one deploy (control 0.1.7, 2026-10-02).
+- `cd UniversalGanttChartSolution && dotnet build -c Release` produces a
+  **managed** solution, even though the file is just
+  `bin/Release/UniversalGanttChartSolution.zip` (no `_managed` suffix). Use
+  `-p:SolutionPackageType=Unmanaged` for an unmanaged one.
+- The import type must match what the target environment already has.
+  Dataverse rejects importing managed over unmanaged, and the reverse. Check
+  Solutions → the solution → Managed Yes/No before building.
+- Build from a clean `bin/` (`rm -rf bin obj` first). The build does not
+  remove old zips, and a stale one (an older version, without the new code)
+  can be picked up and imported by mistake. It looks exactly like a failed
+  deploy.
+- Before importing, check what is inside the zip, not its name:
+  `unzip -p <zip> solution.xml | grep -E '<Version>|<Managed>'`. The control
+  version is in `Controls/*/ControlManifest.xml`.
+- Bump the control and solution versions for every deploy of changed code
+  (see Manifest above); importing the same version can leave the cached
+  control in place.
+- With `pac`, confirm the target before importing: `pac auth select` the
+  right profile, then `pac org who`. The active profile on a dev machine may
+  point at another client's environment. For a one-off import, the maker
+  portal is safer, because the environment name is on screen.
+- After importing: publish all customizations, then hard-refresh the browser
+  so it doesn't keep the old bundle.
+
 ## Writing back to Dataverse
 - Writes go through `context.webAPI` (`updateRecord`, etc.) and are asynchronous
   and fallible. Always `await` and `try/catch`; on failure, surface it
