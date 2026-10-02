@@ -29,5 +29,8 @@ module.exports = {
     "./UniversalGanttChartComponent/list-layout.ts": {
       branches: 100, functions: 100, lines: 100, statements: 100,
     },
+    "./UniversalGanttChartComponent/wbs.ts": {
+      branches: 100, functions: 100, lines: 100, statements: 100,
+    },
   },
 };
