@@ -16,8 +16,38 @@ import {
   resolveExtraColumns,
 } from "./columns";
 import { indexRecordIds, resolveParentRecordId } from "./hierarchy";
+import { TaskNode, linkParent } from "./task-mapping";
 
 type DataSet = ComponentFramework.PropertyTypes.DataSet;
+type DataSetRecord = ComponentFramework.PropertyHelper.DataSetApi.EntityRecord;
+
+/** A generated colour theme, cached per entity while building tasks. */
+interface EntityColorTheme {
+  entityLogicalName: string;
+  backgroundColor: string;
+  backgroundSelectedColor: string;
+  progressColor: string;
+  progressSelectedColor: string;
+}
+
+/** What generateTaskNodes reads from one record. */
+interface TaskFields {
+  readonly name: string;
+  readonly start: string;
+  readonly end: string;
+  readonly progress: number;
+  readonly taskType: TaskType;
+  readonly parentValue: unknown;
+  readonly colorText: string;
+  readonly optionValue: string;
+}
+
+/** The per-call inputs buildTask shares across records. */
+interface TaskBuildInputs {
+  readonly context: ComponentFramework.Context<IInputs>;
+  readonly dataset: DataSet;
+  readonly isDisabled: boolean;
+}
 
 /** Validated extra columns, ready for UniversalGantt (fork customization #2). */
 interface ResolvedExtraColumns {
@@ -264,113 +294,182 @@ export class UniversalGanttChartComponent
     return cells;
   }
 
+  /** The view's Gantt tasks, in view order (see generateTaskNodes). */
   private async generateTasks(
     context: ComponentFramework.Context<IInputs>,
     dataset: ComponentFramework.PropertyTypes.DataSet,
     isProgressing: boolean
-  ) {
-    const entityTypesAndColors: {
-      entityLogicalName: string;
-      backgroundColor: string;
-      backgroundSelectedColor: string;
-      progressColor: string;
-      progressSelectedColor: string;
-    }[] = [];
-    const isDisabled = context.parameters.displayMode.raw === "readonly";
-    const tasks: Task[] = [];
+  ): Promise<Task[]> {
+    const nodes = await this.generateTaskNodes(context, dataset, isProgressing);
+    return nodes.map((node) => node.task);
+  }
+
+  /**
+   * One TaskNode per record that has a name, start and end, in view order.
+   * Per record: read fields -> colour theme -> skip if incomplete -> build.
+   * The theme is generated BEFORE the skip check, so a skipped record still
+   * costs its metadata call (existing behaviour, pinned by
+   * index.characterization.test.ts).
+   */
+  private async generateTaskNodes(
+    context: ComponentFramework.Context<IInputs>,
+    dataset: ComponentFramework.PropertyTypes.DataSet,
+    isProgressing: boolean
+  ): Promise<TaskNode[]> {
+    const build: TaskBuildInputs = {
+      context,
+      dataset,
+      isDisabled: context.parameters.displayMode.raw === "readonly",
+    };
+    const themes: EntityColorTheme[] = [];
+    const optionColum = dataset.columns.find(
+      (c) => c.alias == this._displayColorOption
+    );
+    const optionLogicalName = optionColum ? optionColum.name : "";
     // Parents are matched among the records the view renders (sortedRecordIds),
     // not dataset.records: first wins in view order, and a record outside the
     // view is never linked as a parent.
     const recordIdsByNormalized = indexRecordIds(dataset.sortedRecordIds);
+    const nodes: TaskNode[] = [];
     for (const recordId of dataset.sortedRecordIds) {
       const record = dataset.records[recordId];
-      const name = <string>record.getValue(this._displayNameStr);
-      const start = <string>record.getValue(this._scheduledStartStr);
-      const end = <string>record.getValue(this._scheduledEndStr);
-      const taskTypeOption = <string>record.getValue(this._taskTypeOption);
-      const parentRecordId = resolveParentRecordId(
-        record.getValue(this._parentRecordStr),
-        recordIdsByNormalized
-      );
-      const progress = isProgressing
-        ? Number(record.getValue(this._progressStr))
-        : 0;
-      const colorText = <string>record.getValue(this._displayColorText);
-      const optionValue = <string>record.getValue(this._displayColorOption);
-      const optionColum = dataset.columns.find(
-        (c) => c.alias == this._displayColorOption
-      );
-      const optionLogicalName = optionColum ? optionColum.name : "";
-      const taskType = this.getTaskType(
-        taskTypeOption,
-        context.parameters.taskTypeMapping.raw
-      );
-      const entRef = record.getNamedReference();
-      const entName = entRef.etn || ((entRef as { logicalName?: string }).logicalName as string);
-
-      let entityColorTheme = entityTypesAndColors.find(
-        (e) => e.entityLogicalName === entName
-      );
-
-      if (!entityColorTheme || colorText || optionLogicalName) {
-        entityColorTheme = await this.generateColorTheme(
-          context,
-          entName,
-          colorText,
-          optionValue,
-          optionLogicalName
-        );
-        entityTypesAndColors.push(entityColorTheme);
-      }
-
-      if (!name || !start || !end) continue;
-      try {
-        const taskId = record.getRecordId();
-        const task: Task = {
-          id: taskId,
-          name,
-          start: new Date(
-            new Date(start).getTime() + this._crmUserTimeOffset * 60000
-          ),
-          end: new Date(
-            new Date(end).getTime() + this._crmUserTimeOffset * 60000
-          ),
-          progress: progress,
-          type: taskType,
-          isDisabled: isDisabled,
-          styles: { ...entityColorTheme },
-        };
-        if (taskType === "project") {
-          const expanderState = this._projects[taskId];
-          if (!expanderState) {
-            this._projects[taskId] = false;
-            task.hideChildren = false;
-          } else {
-            task.hideChildren = this._projects[taskId];
-          }
-        }
-        if (parentRecordId !== undefined) {
-          const parentRecordRef = dataset.records[parentRecordId];
-          if (parentRecordRef) {
-            const parentType = this.getTaskType(
-              <string>parentRecordRef.getValue(this._taskTypeOption),
-              context.parameters.taskTypeMapping.raw
-            );
-            if (parentType === "project") {
-              task.project = parentRecordId;
-            } else {
-              task.dependencies = [parentRecordId];
-            }
-          }
-        }
-        tasks.push(task);
-      } catch (e) {
-        throw new Error(
-          `Create task error. Record id: ${record.getRecordId()}, name: ${name}, start time: ${start}, end time: ${end}, progress: ${progress}. Error text ${e}`
-        );
-      }
+      const fields = this.readTaskFields(context, record, isProgressing);
+      const theme = await this.colorThemeFor(context, record, fields, optionLogicalName, themes);
+      if (!fields.name || !fields.start || !fields.end) continue;
+      const parentId =
+        resolveParentRecordId(fields.parentValue, recordIdsByNormalized) ?? null;
+      const task = this.buildTask(build, record, fields, theme, parentId);
+      nodes.push({ id: task.id, parentId, task });
     }
-    return tasks;
+    return nodes;
+  }
+
+  /** The values generateTaskNodes needs from one record. */
+  private readTaskFields(
+    context: ComponentFramework.Context<IInputs>,
+    record: DataSetRecord,
+    isProgressing: boolean
+  ): TaskFields {
+    return {
+      name: <string>record.getValue(this._displayNameStr),
+      start: <string>record.getValue(this._scheduledStartStr),
+      end: <string>record.getValue(this._scheduledEndStr),
+      progress: isProgressing ? Number(record.getValue(this._progressStr)) : 0,
+      // Resolved here, before the theme and outside buildTask's try: a bad
+      // taskTypeMapping throws before any metadata call, as it always has.
+      taskType: this.getTaskType(
+        <string>record.getValue(this._taskTypeOption),
+        context.parameters.taskTypeMapping.raw
+      ),
+      parentValue: record.getValue(this._parentRecordStr),
+      colorText: <string>record.getValue(this._displayColorText),
+      optionValue: <string>record.getValue(this._displayColorOption),
+    };
+  }
+
+  /**
+   * The colour theme for a record's entity: cached per entity in `themes`,
+   * except that a record with its own colour (text, or an option column bound)
+   * always gets a freshly generated theme, which is appended to `themes`.
+   */
+  private async colorThemeFor(
+    context: ComponentFramework.Context<IInputs>,
+    record: DataSetRecord,
+    fields: TaskFields,
+    optionLogicalName: string,
+    themes: EntityColorTheme[]
+  ): Promise<EntityColorTheme> {
+    const entRef = record.getNamedReference();
+    const entName = entRef.etn || ((entRef as { logicalName?: string }).logicalName as string);
+
+    let entityColorTheme = themes.find(
+      (e) => e.entityLogicalName === entName
+    );
+
+    if (!entityColorTheme || fields.colorText || optionLogicalName) {
+      entityColorTheme = await this.generateColorTheme(
+        context,
+        entName,
+        fields.colorText,
+        fields.optionValue,
+        optionLogicalName
+      );
+      themes.push(entityColorTheme);
+    }
+    return entityColorTheme;
+  }
+
+  /**
+   * A project's remembered collapse state (true = children hidden). A project
+   * seen for the first time, or last expanded, is registered as expanded.
+   */
+  private expanderStateFor(taskId: string): boolean {
+    const expanderState = this._projects[taskId];
+    if (!expanderState) {
+      this._projects[taskId] = false;
+      return false;
+    }
+    return this._projects[taskId];
+  }
+
+  /**
+   * How a task attaches to its parent record (see linkParent); nothing if
+   * that record is not in the dataset. Called inside buildTask's try, so a
+   * failure here still surfaces as "Create task error".
+   */
+  private parentLinkFor(
+    build: TaskBuildInputs,
+    parentRecordId: string
+  ): Pick<Task, "project" | "dependencies"> {
+    const parentRecordRef = build.dataset.records[parentRecordId];
+    if (!parentRecordRef) {
+      return {};
+    }
+    const parentType = this.getTaskType(
+      <string>parentRecordRef.getValue(this._taskTypeOption),
+      build.context.parameters.taskTypeMapping.raw
+    );
+    return linkParent(parentType, parentRecordId);
+  }
+
+  /** The Gantt task for one record, attached to its parent (if in the view). */
+  private buildTask(
+    build: TaskBuildInputs,
+    record: DataSetRecord,
+    fields: TaskFields,
+    entityColorTheme: EntityColorTheme,
+    parentRecordId: string | null
+  ): Task {
+    const { name, start, end, progress, taskType } = fields;
+    const { isDisabled } = build;
+    try {
+      const taskId = record.getRecordId();
+      const task: Task = {
+        id: taskId,
+        name,
+        start: new Date(
+          new Date(start).getTime() + this._crmUserTimeOffset * 60000
+        ),
+        end: new Date(
+          new Date(end).getTime() + this._crmUserTimeOffset * 60000
+        ),
+        progress: progress,
+        type: taskType,
+        isDisabled: isDisabled,
+        styles: { ...entityColorTheme },
+      };
+      if (taskType === "project") {
+        task.hideChildren = this.expanderStateFor(taskId);
+      }
+      if (parentRecordId !== null) {
+        Object.assign(task, this.parentLinkFor(build, parentRecordId));
+      }
+      return task;
+    } catch (e) {
+      throw new Error(
+        `Create task error. Record id: ${record.getRecordId()}, name: ${name}, start time: ${start}, end time: ${end}, progress: ${progress}. Error text ${e}`
+      );
+    }
   }
 
   private async generateColorTheme(

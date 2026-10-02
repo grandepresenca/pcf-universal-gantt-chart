@@ -23,5 +23,8 @@ module.exports = {
     "./UniversalGanttChartComponent/hierarchy.ts": {
       branches: 90, functions: 100, lines: 90, statements: 90,
     },
+    "./UniversalGanttChartComponent/task-mapping.ts": {
+      branches: 100, functions: 100, lines: 100, statements: 100,
+    },
   },
 };
