@@ -7,9 +7,11 @@ import {
   HierarchyRow,
   buildRows,
   findCycleIds,
+  indexRecordIds,
   normalizeId,
   orderByHierarchy,
   readParentId,
+  resolveParentRecordId,
   sortByStart,
   visibleRows,
 } from "./hierarchy";
@@ -93,6 +95,59 @@ describe("readParentId — anything else means no parent, never a crash", () => 
     ["blank string id", { id: "" }],
   ])("%s -> undefined", (_label, value) => {
     expect(readParentId(value)).toBeUndefined();
+  });
+});
+
+describe("indexRecordIds", () => {
+  test.each([`{${GUID}}`, GUID, guid, `  {${GUID}}  `])("%p is found by its normalized id", (recordId) => {
+    expect(indexRecordIds([recordId]).get(guid)).toBe(recordId);
+  });
+
+  test("values keep the original record id, never the normalized form", () => {
+    const map = indexRecordIds([`{${GUID}}`, "Other-ID"]);
+    expect(Array.from(map.entries())).toEqual([
+      [guid, `{${GUID}}`],
+      ["other-id", "Other-ID"],
+    ]);
+  });
+
+  test("first wins when two ids normalize the same, in either order", () => {
+    expect(indexRecordIds([GUID, `{${guid}}`]).get(guid)).toBe(GUID);
+    expect(indexRecordIds([`{${guid}}`, GUID]).get(guid)).toBe(`{${guid}}`);
+  });
+
+  test("ids that normalize to empty are skipped; empty input gives an empty map", () => {
+    expect(indexRecordIds(["", "  ", "{}"]).size).toBe(0);
+    expect(indexRecordIds([]).size).toBe(0);
+  });
+});
+
+describe("resolveParentRecordId", () => {
+  const byNormalized = indexRecordIds([GUID, "other"]);
+
+  test("a braced or differently cased lookup resolves to the original record id", () => {
+    expect(resolveParentRecordId({ id: { guid: `{${guid}}` } }, byNormalized)).toBe(GUID);
+    expect(resolveParentRecordId({ id: "OTHER" }, byNormalized)).toBe("other");
+  });
+
+  test("a parent outside the indexed records gives undefined", () => {
+    expect(resolveParentRecordId({ id: { guid: "missing" } }, byNormalized)).toBeUndefined();
+  });
+
+  test.each([
+    ["null", null],
+    ["a lookup without a guid", { id: {} }],
+  ])("%s gives undefined", (_label, value) => {
+    expect(resolveParentRecordId(value, byNormalized)).toBeUndefined();
+  });
+
+  test("strict: a plain-string value is rejected even when that id IS in the view", () => {
+    const withMatches = indexRecordIds(["val", GUID]);
+    // The same ids resolve when they arrive as lookups, so only strictness rejects them below.
+    expect(resolveParentRecordId({ id: "val" }, withMatches)).toBe("val");
+    expect(resolveParentRecordId({ id: { guid: GUID } }, withMatches)).toBe(GUID);
+    expect(resolveParentRecordId("val", withMatches)).toBeUndefined();
+    expect(resolveParentRecordId(GUID, withMatches)).toBeUndefined();
   });
 });
 

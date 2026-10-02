@@ -15,6 +15,7 @@ import {
   extraColumnsGanttKey,
   resolveExtraColumns,
 } from "./columns";
+import { indexRecordIds, resolveParentRecordId } from "./hierarchy";
 
 type DataSet = ComponentFramework.PropertyTypes.DataSet;
 
@@ -277,14 +278,19 @@ export class UniversalGanttChartComponent
     }[] = [];
     const isDisabled = context.parameters.displayMode.raw === "readonly";
     const tasks: Task[] = [];
+    // Parents are matched among the records the view renders (sortedRecordIds),
+    // not dataset.records: first wins in view order, and a record outside the
+    // view is never linked as a parent.
+    const recordIdsByNormalized = indexRecordIds(dataset.sortedRecordIds);
     for (const recordId of dataset.sortedRecordIds) {
       const record = dataset.records[recordId];
       const name = <string>record.getValue(this._displayNameStr);
       const start = <string>record.getValue(this._scheduledStartStr);
       const end = <string>record.getValue(this._scheduledEndStr);
       const taskTypeOption = <string>record.getValue(this._taskTypeOption);
-      const parentRecord = <ComponentFramework.EntityReference>(
-        record.getValue(this._parentRecordStr)
+      const parentRecordId = resolveParentRecordId(
+        record.getValue(this._parentRecordStr),
+        recordIdsByNormalized
       );
       const progress = isProgressing
         ? Number(record.getValue(this._progressStr))
@@ -343,8 +349,7 @@ export class UniversalGanttChartComponent
             task.hideChildren = this._projects[taskId];
           }
         }
-        if (parentRecord) {
-          const parentRecordId = parentRecord.id.guid;
+        if (parentRecordId !== undefined) {
           const parentRecordRef = dataset.records[parentRecordId];
           if (parentRecordRef) {
             const parentType = this.getTaskType(

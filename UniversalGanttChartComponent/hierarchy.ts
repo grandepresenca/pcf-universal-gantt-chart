@@ -217,6 +217,36 @@ export function readParentId(value: unknown): string | undefined {
   return id === "" ? undefined : id;
 }
 
+/**
+ * Normalized id -> original record id, for matching parent lookups against
+ * the records in the view. First wins: a later id that normalizes the same
+ * never replaces an earlier one (same convention as orderByHierarchy). Ids
+ * that normalize to "" are skipped. Values keep the record's original form.
+ */
+export function indexRecordIds(recordIds: readonly string[]): ReadonlyMap<string, string> {
+  const byNormalized = new Map<string, string>();
+  recordIds.forEach((recordId) => {
+    const key = normalizeId(recordId);
+    if (key !== "" && !byNormalized.has(key)) {
+      byNormalized.set(key, recordId);
+    }
+  });
+  return byNormalized;
+}
+
+/**
+ * The original record id of the parent a lookup value points at, or
+ * undefined when the value is not a usable lookup (see readParentId) or its
+ * parent is not among the indexed records.
+ */
+export function resolveParentRecordId(
+  value: unknown,
+  byNormalized: ReadonlyMap<string, string>
+): string | undefined {
+  const parentId = readParentId(value);
+  return parentId === undefined ? undefined : byNormalized.get(parentId);
+}
+
 /** getTime(), with an invalid date sorting after every valid one. */
 function sortableTime(date: Date): number {
   const time = date.getTime();
