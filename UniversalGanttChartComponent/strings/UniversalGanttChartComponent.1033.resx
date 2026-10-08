@@ -144,4 +144,13 @@
   <data name="Week_Name" xml:space="preserve">
     <value>week</value>
   </data>
+  <data name="Print_Report" xml:space="preserve">
+    <value>Print / PDF</value>
+  </data>
+  <data name="Print_Generated" xml:space="preserve">
+    <value>Generated {0}</value>
+  </data>
+  <data name="Print_Blocked" xml:space="preserve">
+    <value>The print dialog could not be opened. Allow pop-ups for this site, or try another browser.</value>
+  </data>
 </root>

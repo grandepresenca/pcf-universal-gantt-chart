@@ -29,7 +29,10 @@ import {
 import { isErrorDialogOptions } from "../helper";
 import { ExtraColumnDef } from "../columns";
 import { HierarchyRow, toggleCollapsed } from "../hierarchy";
-import { TaskNode, visibleTasks } from "../task-mapping";
+import { TaskNode, toPrintRows, visibleTasks } from "../task-mapping";
+import { buildPrintHtml, exportFileName } from "../print-report";
+import { tickLabel } from "../print-timeline";
+import { PrintHost, printHtml } from "../print-delivery";
 
 export type UniversalGanttProps = {
   context: ComponentFramework.Context<IInputs>;
@@ -57,6 +60,8 @@ export type UniversalGanttProps = {
   columnWidthWeek: number;
   columnWidthMonth: number;
   onViewChange: (viewMode: ViewMode) => void;
+  /** The print report's heading, read on demand (project name or view title). */
+  getReportTitle: () => string;
   /** Validated extra list columns (fork customization #2). */
   extraColumns: readonly ExtraColumnDef[];
   /** Record id -> extra column texts, in extraColumns order. */
@@ -114,6 +119,47 @@ function useTree(rows: readonly HierarchyRow<TaskNode>[]): {
   return { tasks, hierarchyValue };
 }
 
+/** The real browser, for print-delivery.ts (read at click time, not import time). */
+const browserPrintHost = (): PrintHost => ({
+  document,
+  open: (url, target) => window.open(url, target),
+  setTimeout: (fn, ms) => window.setTimeout(fn, ms),
+});
+
+/**
+ * The print button's handler. Read-only: builds the report from ALL rows,
+ * expanded (not the on-screen collapse state), and opens the browser's print
+ * dialog, where "Save as PDF" makes the file. If the dialog can't be opened,
+ * the user gets an error dialog; the route used is logged for the deploy check.
+ */
+function usePrintReport(
+  props: UniversalGanttProps,
+  getReportTitle: () => string,
+  formatDateShort: (value: Date, includeTime?: boolean) => string
+): () => void {
+  const { context, rows, recordDisplayName, startDisplayName, endDisplayName, includeTime, locale } = props;
+  return React.useCallback(() => {
+    const now = new Date();
+    const title = getReportTitle();
+    const html = buildPrintHtml({
+      title,
+      generatedText: context.resources.getString("Print_Generated").replace("{0}", context.formatting.formatDateLong(now)),
+      fileName: exportFileName(title, now),
+      columns: { task: recordDisplayName, start: startDisplayName, end: endDisplayName },
+      rows: toPrintRows(rows, (date) => formatDateShort(date, includeTime)),
+      tickLabel: (date, unit) => tickLabel(date, unit, locale),
+    });
+    try {
+      console.info(`Gantt print report opened via: ${printHtml(html, browserPrintHost())}`);
+    } catch (e) {
+      context.navigation.openErrorDialog({
+        message: context.resources.getString("Print_Blocked"),
+        details: e instanceof Error ? e.message : String(e),
+      });
+    }
+  }, [context, rows, getReportTitle, recordDisplayName, startDisplayName, endDisplayName, includeTime, locale, formatDateShort]);
+}
+
 /** Builds the GanttDisplayContext value; recomputed only when an input changes. */
 function useDisplayContextValue(
   props: UniversalGanttProps,
@@ -157,6 +203,7 @@ export const UniversalGantt: React.FunctionComponent<UniversalGanttProps> = (
   // out of the spread into <Gantt>.
   const {
     rows,
+    getReportTitle,
     extraColumns,
     extraCellTexts,
     extraColumnMessages,
@@ -247,6 +294,7 @@ export const UniversalGantt: React.FunctionComponent<UniversalGanttProps> = (
   );
   const extraColumnsValue = useExtraColumnsValue(extraColumns, extraCellTexts);
   const { tasks, hierarchyValue } = useTree(rows);
+  const handlePrint = usePrintReport(props, getReportTitle, formatDateShort);
 
   const options: StylingOption & EventOption = {
     fontSize: props.fontSize,
@@ -289,6 +337,7 @@ export const UniversalGantt: React.FunctionComponent<UniversalGanttProps> = (
           props.onViewChange(viewMode);
           setView(viewMode);
         }}
+        onPrint={handlePrint}
       />
       <ExtraColumnsNotice messages={extraColumnMessages} />
       <GanttDisplayContext.Provider value={displayContext}>

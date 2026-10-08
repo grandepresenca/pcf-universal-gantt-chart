@@ -144,4 +144,13 @@
   <data name="Week_Name" xml:space="preserve">
     <value>Semana</value>
   </data>
+  <data name="Print_Report" xml:space="preserve">
+    <value>Imprimir / PDF</value>
+  </data>
+  <data name="Print_Generated" xml:space="preserve">
+    <value>Gerado em {0}</value>
+  </data>
+  <data name="Print_Blocked" xml:space="preserve">
+    <value>Não foi possível abrir a caixa de diálogo de impressão. Permita pop-ups para este site ou use outro navegador.</value>
+  </data>
 </root>

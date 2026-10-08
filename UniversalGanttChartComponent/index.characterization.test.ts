@@ -32,6 +32,8 @@ type Generate<T> = (
 interface Internals {
   generateTaskNodes: Generate<TaskNode[]>;
   generateRows: Generate<readonly HierarchyRow<TaskNode>[]>;
+  getReportTitle(): string;
+  _dataSet: ComponentFramework.PropertyTypes.DataSet;
 }
 
 const OFFSET_MINUTES = 120;
@@ -242,5 +244,41 @@ describe("generateRows — the parent-cycle warning", () => {
     } finally {
       warn.mockRestore();
     }
+  });
+});
+
+/** A dataset for getReportTitle: rows with a project lookup's formatted value, and a view title. */
+function titleDataset(projects: (string | null)[] | null, viewTitle: string) {
+  const records: Record<string, unknown> = {};
+  // Without the column, the fake still answers with a name: reading it would change the title.
+  (projects ?? ["Read anyway"]).forEach((name, i) => {
+    records[`r${i}`] = { getFormattedValue: (column: string) => (column === "klein_projectid" ? name ?? "" : "x") };
+  });
+  return {
+    sortedRecordIds: Object.keys(records),
+    records,
+    columns: projects === null ? [{ name: "subject" }] : [{ name: "subject" }, { name: "klein_projectid" }],
+    getTitle: () => viewTitle,
+  } as unknown as ComponentFramework.PropertyTypes.DataSet;
+}
+
+describe("getReportTitle — the print report heading (read on demand)", () => {
+  const title = (projects: (string | null)[] | null, view: string): string => {
+    const { internals } = setUp(MODEL);
+    internals._dataSet = titleDataset(projects, view);
+    return internals.getReportTitle();
+  };
+
+  test("the view has klein_projectid and every row shares one project -> the project name", () => {
+    expect(title(["Alazan", "Alazan"], "Tasks")).toBe("Alazan");
+  });
+
+  test("rows from several projects, or a row without one -> the view title", () => {
+    expect(title(["Alazan", "Borrego"], "Active Projects")).toBe("Active Projects");
+    expect(title(["Alazan", null], "Active Projects")).toBe("Active Projects");
+  });
+
+  test("the view has no klein_projectid column -> the view title (the column is never read)", () => {
+    expect(title(null, "My Tasks")).toBe("My Tasks");
   });
 });

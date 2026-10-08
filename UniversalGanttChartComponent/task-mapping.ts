@@ -4,6 +4,7 @@
 // logic, while these helpers speak gantt-task-react's types.
 
 import { Task } from "gantt-task-react";
+import type { PrintRow } from "./print-report";
 import {
   HierNode,
   HierarchyRow,
@@ -49,6 +50,32 @@ export function visibleTasks(
   collapsed: ReadonlySet<string>
 ): Task[] {
   return visibleRows(rows, collapsed).map((row) => row.node.task);
+}
+
+/**
+ * The print report's rows: EVERY row of the tree, in tree order, expanded —
+ * deliberately not filtered by the on-screen collapse state, so the report is
+ * complete. Dates are formatted by the caller (same format as the list).
+ */
+export function toPrintRows(
+  rows: readonly HierarchyRow<TaskNode>[],
+  formatDate: (value: Date) => string
+): PrintRow[] {
+  return rows.map(({ node, depth, hasChildren }) => {
+    const t = node.task;
+    return {
+      id: t.id,
+      name: t.name,
+      depth,
+      hasChildren,
+      start: t.start,
+      end: t.end,
+      kind: t.type === "milestone" || t.type === "project" ? t.type : "task",
+      color: t.styles?.backgroundColor ?? null,
+      startText: formatDate(t.start),
+      endText: formatDate(t.end),
+    };
+  });
 }
 
 /** How many cycle ids the warning lists before summarizing the rest. */

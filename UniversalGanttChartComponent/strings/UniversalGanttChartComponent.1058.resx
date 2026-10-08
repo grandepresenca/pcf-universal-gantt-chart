@@ -144,4 +144,13 @@
   <data name="Week_Name" xml:space="preserve">
     <value>неділя</value>
   </data>
+  <data name="Print_Report" xml:space="preserve">
+    <value>Друк / PDF</value>
+  </data>
+  <data name="Print_Generated" xml:space="preserve">
+    <value>Створено {0}</value>
+  </data>
+  <data name="Print_Blocked" xml:space="preserve">
+    <value>Не вдалося відкрити діалогове вікно друку. Дозвольте спливаючі вікна для цього сайту або скористайтеся іншим браузером.</value>
+  </data>
 </root>

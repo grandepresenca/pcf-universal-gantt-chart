@@ -17,6 +17,10 @@ import {
 } from "./columns";
 import { HierarchyRow, indexRecordIds, resolveParentRecordId } from "./hierarchy";
 import { TaskNode, buildHierarchy, cycleWarning } from "./task-mapping";
+import { reportTitle } from "./print-report";
+
+/** The task -> project lookup (ADR-001); used only for the print report's heading. */
+const PROJECT_COLUMN = "klein_projectid";
 
 type DataSet = ComponentFramework.PropertyTypes.DataSet;
 type DataSetRecord = ComponentFramework.PropertyHelper.DataSetApi.EntityRecord;
@@ -88,6 +92,7 @@ export class UniversalGanttChartComponent
   constructor() {
     this.handleViewModeChange = this.handleViewModeChange.bind(this);
     this.generateColorTheme = this.generateColorTheme.bind(this);
+    this.getReportTitle = this.getReportTitle.bind(this);
   }
 
   public init(
@@ -210,6 +215,7 @@ export class UniversalGanttChartComponent
         columnWidthWeek,
         columnWidthMonth,
         onViewChange: this.handleViewModeChange,
+        getReportTitle: this.getReportTitle,
         extraColumns: extra.columns,
         extraCellTexts: this.getExtraCellTexts(this._dataSet, extra.columns),
         extraColumnMessages: extra.messages,
@@ -495,6 +501,21 @@ export class UniversalGanttChartComponent
       taskType = <TaskType>this._taskTypeMap[taskTypeOption];
     }
     return taskType;
+  }
+
+  /**
+   * The print report's heading, read only when the user prints (never in
+   * updateView): the project name when the view has the klein_projectid
+   * column and every loaded row shares one project, else the view title
+   * (e.g. the Active Projects view). Read-only.
+   */
+  private getReportTitle(): string {
+    const dataset = this._dataSet;
+    const hasProject = dataset.columns.some((c) => c.name === PROJECT_COLUMN);
+    const names = dataset.sortedRecordIds.map((id) =>
+      hasProject ? dataset.records[id].getFormattedValue(PROJECT_COLUMN) || null : null
+    );
+    return reportTitle(names, dataset.getTitle());
   }
 
   private handleViewModeChange(viewMode: ViewMode) {

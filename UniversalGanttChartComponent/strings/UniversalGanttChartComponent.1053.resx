@@ -144,4 +144,13 @@
   <data name="Week_Name" xml:space="preserve">
     <value>vecka</value>
   </data>
+  <data name="Print_Report" xml:space="preserve">
+    <value>Skriv ut / PDF</value>
+  </data>
+  <data name="Print_Generated" xml:space="preserve">
+    <value>Skapad {0}</value>
+  </data>
+  <data name="Print_Blocked" xml:space="preserve">
+    <value>Utskriftsdialogen kunde inte öppnas. Tillåt popup-fönster för den här webbplatsen eller använd en annan webbläsare.</value>
+  </data>
 </root>

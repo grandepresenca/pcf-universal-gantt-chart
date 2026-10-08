@@ -144,4 +144,13 @@
   <data name="Week_Name" xml:space="preserve">
     <value>týden</value>
   </data>
+  <data name="Print_Report" xml:space="preserve">
+    <value>Tisk / PDF</value>
+  </data>
+  <data name="Print_Generated" xml:space="preserve">
+    <value>Vygenerováno {0}</value>
+  </data>
+  <data name="Print_Blocked" xml:space="preserve">
+    <value>Dialog tisku nelze otevřít. Povolte pro tento web automaticky otevíraná okna nebo zkuste jiný prohlížeč.</value>
+  </data>
 </root>

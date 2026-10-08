@@ -1,7 +1,7 @@
 // task-mapping.test.ts — the display pipeline and the cycle warning.
 
 import { Task } from "gantt-task-react";
-import { TaskNode, buildHierarchy, cycleWarning, visibleTasks } from "./task-mapping";
+import { TaskNode, buildHierarchy, cycleWarning, toPrintRows, visibleTasks } from "./task-mapping";
 
 const node = (id: string, parentId: string | null, iso: string, endIso: string = iso): TaskNode => {
   const task: Task = { id, name: id, start: new Date(iso), end: new Date(endIso), progress: 0, type: "task" };
@@ -128,5 +128,33 @@ describe("visibleTasks", () => {
 
   test("returns the tasks themselves (same objects the rows carry)", () => {
     expect(visibleTasks(tree, new Set())[0]).toBe(tree[0].node.task);
+  });
+});
+
+describe("toPrintRows", () => {
+  const tree = buildHierarchy([
+    node("p", null, "2026-01-01"),
+    node("c", "p", "2026-01-02"),
+    node("g", "c", "2026-01-03"),
+  ]).rows;
+
+  test("EVERY row, in tree order, with depth and hasChildren (expanded, whatever is collapsed on screen)", () => {
+    const rows = toPrintRows(tree, () => "");
+    expect(rows.map((r) => [r.id, r.depth, r.hasChildren])).toEqual([["p", 0, true], ["c", 1, true], ["g", 2, false]]);
+  });
+
+  test("names, dates (formatted by the caller), kind and colour come from the task", () => {
+    const task = { ...tree[0].node.task, end: new Date("2026-01-20"), type: "milestone" as const, styles: { backgroundColor: "#abcdef" } };
+    const styled: TaskNode = { ...tree[0].node, task };
+    const [r] = toPrintRows([{ node: styled, depth: 0, hasChildren: false }], (d) => `D${d.getUTCDate()}`);
+    expect(r).toMatchObject({ name: "p", kind: "milestone", color: "#abcdef", startText: "D1", endText: "D20" });
+    expect(r.start).toBe(styled.task.start);
+  });
+
+  test("project stays project; any other type prints as a task; no styles -> no colour", () => {
+    const as = (type: TaskNode["task"]["type"]) => toPrintRows([{ node: { ...tree[0].node, task: { ...tree[0].node.task, type } }, depth: 0, hasChildren: false }], () => "")[0];
+    expect(as("project").kind).toBe("project");
+    expect(as("task").kind).toBe("task");
+    expect(as("task").color).toBeNull();
   });
 });
